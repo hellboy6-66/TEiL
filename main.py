@@ -1,6 +1,6 @@
 import sys
 import os
-import subprocess  # Импортируем модуль для запуска консольных команд Linux
+import subprocess  
 from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QHBoxLayout, QStackedLayout, QLabel, QInputDialog, QMessageBox
 from PyQt6.QtCore import Qt
 from functools import partial
@@ -16,6 +16,11 @@ window.setFixedSize(1300, 700)
 
 # Принудительно завершаем процесс Python при закрытии главного окна на крестик
 window.destroyed.connect(sys.exit)
+
+
+# ================= ПЕРЕМЕННЫЕ ДЛЯ СТЕКА И ПРЕДЫДУЩЕЙ ПАПКИ =================
+dir_stack = []
+previous_working_dir = None  # Переменная для хранения предыдущей папки (для команды cd -)
 
 
 # ================= ЛЕВАЯ ЧАСТЬ: ДИРЕКТОРИЯ =================
@@ -66,12 +71,16 @@ menu_widget.setLayout(menu_layout)
 sub_widget = QWidget(parent=window)
 sub_button_layout = QVBoxLayout()
 
-# Теперь у нас тут фиксированные кнопки команд и кнопка Назад
 btn_cd = QPushButton("cd (Смена директории)", parent=sub_widget)
 btn_ls = QPushButton("ls (Список файлов)", parent=sub_widget)
+btn_pushd = QPushButton("pushd (Поместить в стек и перейти)", parent=sub_widget)
+btn_popd = QPushButton("popd (Извлечь из стека и вернуться)", parent=sub_widget)
+btn_dirs = QPushButton("dirs (Показать стек директорий)", parent=sub_widget)
+btn_cd_minus = QPushButton("cd - (Вернуться в прошлую папку)", parent=sub_widget)  # Наша новая кнопка
 btn_back = QPushButton("Назад", parent=sub_widget)
 
-buttons_sub = [btn_cd, btn_ls, btn_back]
+# Добавляем все кнопки, включая cd -, в список для настройки размера
+buttons_sub = [btn_cd, btn_ls, btn_pushd, btn_popd, btn_dirs, btn_cd_minus, btn_back]
 for btn in buttons_sub:
     btn.setFixedWidth(350)
     sub_button_layout.addWidget(btn)
@@ -91,7 +100,6 @@ right_stacked_layout.addWidget(sub_widget)   # Индекс 1
 
 # ================= ЛОГИКА И ОБРАБОТКА НАЖАТИЙ =================
 
-# Переход на экран подменю ("Работа с файлами")
 def show_file_sub_screen():
     right_stacked_layout.setCurrentIndex(1) 
 
@@ -100,67 +108,103 @@ def show_main_screen():
 
 # Логика для кнопки CD
 def handle_cd_click():
-    text, ok = QInputDialog.getText(
-        window, 
-        "Смена директории", 
-        "Введите новый путь к директории:"
-    )
+    global previous_working_dir
+    text, ok = QInputDialog.getText(window, "Смена директории", "Введите новый путь к директории:")
     if ok and text.strip():
         path_to_check = text.strip()
         if os.path.isdir(path_to_check):
-            # Меняем текущую директорию в самом процессе Python, чтобы ls работал в ней!
+            # Сохраняем папку перед переходом
+            previous_working_dir = os.getcwd()
+            
             os.chdir(path_to_check)
-            # Обновляем текст на экране
             dir_label.setText(f"Текущая директория:\n{os.getcwd()}")
         else:
-            QMessageBox.warning(
-                window, 
-                "Ошибка", 
-                f"Директория не найдена:\n{path_to_check}\n\nПожалуйста, введите корректный путь."
-            )
+            QMessageBox.warning(window, "Ошибка", f"Директория не найдена:\n{path_to_check}")
 
-# Логика для кнопки LS (Выполнение команды Linux)
+# Логика для кнопки LS
 def handle_ls_click():
-    # Запрашиваем ключи у пользователя
-    keys, ok = QInputDialog.getText(
-        window, 
-        "Параметры ls", 
-        "Введите ключи терминала (например: -l, -a, -la) или оставьте пустым:"
-    )
-    
-    # Если пользователь нажал OK (даже если строка пустая, это валидно для простого ls)
+    keys, ok = QInputDialog.getText(window, "Параметры ls", "Введите ключи терминала (например: -l, -a, -la) или оставьте пустым:")
     if ok:
         keys = keys.strip()
-        
-        # Формируем команду. Если ввели ключи, добавляем их.
         command = ["ls"]
         if keys:
-            # Разделяем строку ключей на отдельные аргументы (например, "-l -a" -> ["-l", "-a"])
             command.extend(keys.split())
-            
         try:
-            # Выполняем команду строго в текущей выбранной директории (cwd=os.getcwd())
-            # text=True декодирует вывод из байтов в обычную строку текста
             result = subprocess.check_output(command, cwd=os.getcwd(), text=True, stderr=subprocess.STDOUT)
-            
-            # Если папка пустая, check_output вернет пустую строку
             if not result.strip():
                 result = "(Директория пуста)"
-                
-            # Показываем результат выполнения команды пользователю
             QMessageBox.information(window, f"Результат: ls {keys}", result)
-            
         except subprocess.CalledProcessError as e:
-            # Если пользователь ввел неправильный ключ (например, -xyz которого нет в ls)
             QMessageBox.critical(window, "Ошибка терминала", f"Команда завершилась с ошибкой:\n{e.output}")
         except Exception as e:
             QMessageBox.critical(window, "Критическая ошибка", f"Не удалось выполнить команду:\n{str(e)}")
 
+# Логика для кнопки PUSHD
+def handle_pushd_click():
+    global previous_working_dir
+    text, ok = QInputDialog.getText(window, "Команда pushd", "Введите путь к новой директории для перехода:")
+    if ok and text.strip():
+        path_to_check = text.strip()
+        if os.path.isdir(path_to_check):
+            # Сохраняем папку перед переходом для cd - и для стека
+            previous_working_dir = os.getcwd()
+            dir_stack.append(os.getcwd())
+            
+            os.chdir(path_to_check)
+            dir_label.setText(f"Текущая директория:\n{os.getcwd()}")
+            
+            current_stack_str = " -> ".join([os.getcwd()] + dir_stack[::-1])
+            QMessageBox.information(window, "pushd", f"Директория добавлена в стек.\nТекущий стек:\n{current_stack_str}")
+        else:
+            QMessageBox.warning(window, "Ошибка pushd", f"Директория не найдена:\n{path_to_check}")
 
-# Привязка событий к кнопкам
-btn_file.clicked.connect(show_file_sub_screen)  # Теперь просто открывает подменю файлов
+# Логика для кнопки POPD
+def handle_popd_click():
+    global previous_working_dir
+    if dir_stack:
+        # Сохраняем перед переходом обратно
+        previous_working_dir = os.getcwd()
+        
+        previous_dir = dir_stack.pop()
+        os.chdir(previous_dir)
+        dir_label.setText(f"Текущая директория:\n{os.getcwd()}")
+        
+        QMessageBox.information(window, "popd", f"Вернулись назад в:\n{previous_dir}")
+    else:
+        QMessageBox.warning(window, "Ошибка popd", "Стек директорий пуст! (directory stack empty)")
 
-# Остальные кнопки пока просто ведут на заглушки (можно доработать позже)
+# Логика для кнопки DIRS
+def handle_dirs_click():
+    if not dir_stack:
+        QMessageBox.information(window, "dirs", f"Стек пуст. Текущая папка:\n{os.getcwd()}")
+    else:
+        stack_list = [os.getcwd()] + dir_stack[::-1]
+        formatted_stack = "\n".join([f"[{i}] {path}" for i, path in enumerate(stack_list)])
+        QMessageBox.information(window, "Стек директорий (dirs)", formatted_stack)
+
+# Логика для кнопки CD -
+def handle_cd_minus_click():
+    global previous_working_dir
+    # Если мы еще ни разу не меняли папку с момента запуска программы
+    if previous_working_dir is None:
+        QMessageBox.warning(window, "cd -", "Предыдущая директория отсутствует (OLDPWD не задан)")
+    else:
+        # Запоминаем текущую папку, чтобы она стала "предыдущей" для следующего нажатия cd -
+        temp_current = os.getcwd()
+        
+        # Переходим в прошлую папку
+        os.chdir(previous_working_dir)
+        dir_label.setText(f"Текущая директория:\n{os.getcwd()}")
+        
+        # Выводим путь в окно, точно так же, как Linux выводит его в терминал
+        QMessageBox.information(window, "cd -", f"Перешли в предыдущую директорию:\n{os.getcwd()}")
+        
+        # Обновляем историю переходов
+        previous_working_dir = temp_current
+
+
+# Привязка событий к главным кнопкам
+btn_file.clicked.connect(show_file_sub_screen)
 btn_viewing.clicked.connect(partial(QMessageBox.information, window, "Инфо", "Раздел в разработке"))
 btn_admin.clicked.connect(partial(QMessageBox.information, window, "Инфо", "Раздел в разработке"))
 btn_management.clicked.connect(partial(QMessageBox.information, window, "Инфо", "Раздел в разработке"))
@@ -171,6 +215,10 @@ btn_archiving.clicked.connect(partial(QMessageBox.information, window, "Инфо
 # Привязка кнопок внутри подменю файлов
 btn_cd.clicked.connect(handle_cd_click)
 btn_ls.clicked.connect(handle_ls_click)
+btn_pushd.clicked.connect(handle_pushd_click)
+btn_popd.clicked.connect(handle_popd_click)
+btn_dirs.clicked.connect(handle_dirs_click)
+btn_cd_minus.clicked.connect(handle_cd_minus_click)  # Привязываем новую кнопку
 btn_back.clicked.connect(show_main_screen)
 
 
