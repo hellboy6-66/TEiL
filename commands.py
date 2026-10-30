@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
 class TerminalCommands:
     def __init__(self):
-        # Переносим сюда глобальные переменные состояния
         self.dir_stack = []
         self.previous_working_dir = None
 
@@ -35,6 +34,43 @@ class TerminalCommands:
                 QMessageBox.critical(parent_window, "Ошибка терминала", f"Команда завершилась с ошибкой:\n{e.output}")
             except Exception as e:
                 QMessageBox.critical(parent_window, "Критическая ошибка", f"Не удалось выполнить команду:\n{str(e)}")
+
+    def handle_touch(self, parent_window):
+        filename, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда touch", 
+            "Введите имя файла или несколько имен через пробел (например: a.txt b.py c.log):"
+        )
+        if ok and filename.strip():
+            # Разделяем введенную строку по пробелам на список отдельных файлов
+            file_list = filename.strip().split()
+            
+            created_files = []
+            updated_files = []
+            failed_files = []
+
+            for file_name in file_list:
+                try:
+                    if os.path.exists(file_name):
+                        os.utime(file_name, None)
+                        updated_files.append(file_name)
+                    else:
+                        with open(file_name, 'a'):
+                            pass
+                        created_files.append(file_name)
+                except Exception as e:
+                    failed_files.append(f"{file_name} ({str(e)})")
+
+            # Формируем красивый отчет для пользователя
+            report = []
+            if created_files:
+                report.append(f"Создано файлов ({len(created_files)}):\n" + ", ".join(created_files))
+            if updated_files:
+                report.append(f"Обновлено время ({len(updated_files)}):\n" + ", ".join(updated_files))
+            if failed_files:
+                report.append(f"Ошибка при создании ({len(failed_files)}):\n" + "\n".join(failed_files))
+
+            QMessageBox.information(parent_window, "Результат touch", "\n\n".join(report))
 
     def handle_pushd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
@@ -87,16 +123,12 @@ class TerminalCommands:
                 if not result.strip():
                     result = "Файлы не найдены."
                 else:
-                    # Разделяем вывод на отдельные строки
                     lines = result.splitlines()
-                    # Если результатов больше 30, обрезаем их
                     if len(lines) > 30:
                         result = "\n".join(lines[:30]) + f"\n\n... и еще {len(lines) - 30} строк (показаны первые 30 результатов)."
-                
                 QMessageBox.information(parent_window, "Результат find", result)
             except subprocess.CalledProcessError as e:
                 QMessageBox.critical(parent_window, "Ошибка find", f"Команда завершилась с ошибкой:\n{e.output}")
-
 
     def handle_locate(self, parent_window):
         filename, ok = QInputDialog.getText(parent_window, "Команда locate", "Введите ключевое слово для глобального поиска по системе:")
