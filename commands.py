@@ -39,16 +39,54 @@ class TerminalCommands:
         filename, ok = QInputDialog.getText(
             parent_window, 
             "Команда touch", 
-            "Введите имя файла или несколько имен через пробел (например: a.txt b.py c.log):"
+            "Введите имена файлов (поддерживаются скобки {}, например: file{1..3}.txt или image.{jpg,png}):"
         )
         if ok and filename.strip():
-            # Разделяем введенную строку по пробелам на список отдельных файлов
-            file_list = filename.strip().split()
+            raw_input = filename.strip()
+            
+            # Внутренняя функция парсинга фигурных скобок (Brace Expansion)
+            def expand_braces(text):
+                import re
+                # Ищем выражение внутри фигурных скобок: {что-то}
+                match = re.search(r'\{([^}]+)\}', text)
+                if not match:
+                    return [text]
+                
+                prefix = text[:match.start()]
+                suffix = text[match.end():]
+                body = match.group(1)
+                
+                expanded = []
+                # Проверяем диапазон типа {1..5} или {a..z}
+                if '..' in body:
+                    parts = body.split('..')
+                    if len(parts) == 2:
+                        start, end = parts[0], parts[1]
+                        # Если это числа
+                        if start.isdigit() and end.isdigit():
+                            for i in range(int(start), int(end) + 1):
+                                expanded.extend(expand_braces(f"{prefix}{i}{suffix}"))
+                        # Если это одиночные буквы
+                        elif len(start) == 1 and len(end) == 1:
+                            for ord_char in range(ord(start), ord(end) + 1):
+                                expanded.extend(expand_braces(f"{prefix}{chr(ord_char)}{suffix}"))
+                else:
+                    # Если это список через запятую типа {jpg,png,gif}
+                    items = body.split(',')
+                    for item in items:
+                        expanded.extend(expand_braces(f"{prefix}{item.strip()}{suffix}"))
+                return expanded
+
+            # Сначала разбиваем ввод по пробелам, если пользователь ввел несколько разных масок
+            file_list = []
+            for part in raw_input.split():
+                file_list.extend(expand_braces(part))
             
             created_files = []
             updated_files = []
             failed_files = []
 
+            # Перебираем итоговый раскрытый список файлов
             for file_name in file_list:
                 try:
                     if os.path.exists(file_name):
@@ -61,16 +99,17 @@ class TerminalCommands:
                 except Exception as e:
                     failed_files.append(f"{file_name} ({str(e)})")
 
-            # Формируем красивый отчет для пользователя
+            # Вывод красивого диалогового отчета
             report = []
             if created_files:
                 report.append(f"Создано файлов ({len(created_files)}):\n" + ", ".join(created_files))
             if updated_files:
                 report.append(f"Обновлено время ({len(updated_files)}):\n" + ", ".join(updated_files))
             if failed_files:
-                report.append(f"Ошибка при создании ({len(failed_files)}):\n" + "\n".join(failed_files))
+                report.append(f"Ошибки ({len(failed_files)}):\n" + "\n".join(failed_files))
 
             QMessageBox.information(parent_window, "Результат touch", "\n\n".join(report))
+
 
     def handle_pushd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
