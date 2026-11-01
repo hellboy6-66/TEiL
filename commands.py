@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
@@ -53,7 +54,7 @@ class TerminalCommands:
             if os.path.isdir(path_to_check):
                 self.previous_working_dir = os.getcwd()
                 os.chdir(path_to_check)
-                callback_update_label(os.getcwd()) # Исправлена опечатка geязыкtcwd() -> getcwd()
+                callback_update_label(os.getcwd())
             else:
                 QMessageBox.warning(parent_window, "Ошибка", f"Директория не найдена:\n{path_to_check}")
 
@@ -140,6 +141,239 @@ class TerminalCommands:
                 report.append(f"Ошибки при создании ({len(failed_dirs)}):\n" + "\n".join(failed_dirs))
 
             QMessageBox.information(parent_window, "Result: mkdir", "\n\n".join(report))
+
+    def handle_cp(self, parent_window):
+        """Копирование файлов/директорий (аналог cp, поддерживает -r для директорий и раскрытие {})"""
+        # 1. Запрашиваем источник(и)
+        source, ok = QInputDialog.getText(
+            parent_window,
+            "Команда cp",
+            "Введите источник (файл/директорию). Поддерживаются скобки {}, например: file{1..3}.txt или dir{A,B}:"
+        )
+        if not (ok and source.strip()):
+            return
+
+        # 2. Запрашиваем назначение
+        dest, ok = QInputDialog.getText(
+            parent_window,
+            "Команда cp",
+            "Введите назначение (файл или директорию):"
+        )
+        if not (ok and dest.strip()):
+            return
+
+        source_list = self._parse_input_to_list(source)
+        dest = dest.strip()
+
+        # 3. Если среди источников есть директории — спрашиваем про рекурсию (аналог -r)
+        dirs_in_sources = [s for s in source_list if os.path.isdir(s)]
+        recursive = False
+        if dirs_in_sources:
+            reply = QMessageBox.question(
+                parent_window,
+                "cp: рекурсивное копирование",
+                "Среди источников есть директории.\n"
+                "Копировать рекурсивно (аналог cp -r)?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            recursive = True
+
+        copied = []
+        failed = []
+        multiple = len(source_list) > 1
+
+        for src in source_list:
+            try:
+                if not os.path.exists(src):
+                    failed.append(f"{src} (источник не найден)")
+                    continue
+
+                if os.path.isdir(src):
+                    if not recursive:
+                        failed.append(f"{src} (это директория, пропущено)")
+                        continue
+                    # Копирование директории
+                    if os.path.isdir(dest):
+                        target = os.path.join(dest, os.path.basename(os.path.normpath(src)))
+                    else:
+                        target = dest
+                    shutil.copytree(src, target, dirs_exist_ok=True)
+                    copied.append(f"{src} -> {target}/")
+                else:
+                    # Копирование файла
+                    if os.path.isdir(dest):
+                        target = os.path.join(dest, os.path.basename(src))
+                    elif multiple:
+                        failed.append(
+                            f"{src} (несколько источников — назначение должно быть директорией)"
+                        )
+                        continue
+                    else:
+                        target = dest
+                    shutil.copy2(src, target)
+                    copied.append(f"{src} -> {target}")
+
+            except Exception as e:
+                failed.append(f"{src} ({str(e)})")
+
+        report = []
+        if copied:
+            report.append(f"Скопировано ({len(copied)}):\n" + "\n".join(copied))
+        if failed:
+            report.append(f"Ошибки ({len(failed)}):\n" + "\n".join(failed))
+        if not report:
+            report.append("Нечего копировать.")
+
+        QMessageBox.information(parent_window, "Результат cp", "\n\n".join(report))
+
+    def handle_mv(self, parent_window):
+        """Перемещение/переименование файлов и директорий (аналог mv, поддерживает раскрытие {})"""
+        # 1. Запрашиваем источник(и)
+        source, ok = QInputDialog.getText(
+            parent_window,
+            "Команда mv",
+            "Введите источник (файл/директорию). Поддерживаются скобки {}, например: file{1..3}.txt или dir{A,B}:"
+        )
+        if not (ok and source.strip()):
+            return
+
+        # 2. Запрашиваем назначение
+        dest, ok = QInputDialog.getText(
+            parent_window,
+            "Команда mv",
+            "Введите назначение (новое имя или существующую директорию):"
+        )
+        if not (ok and dest.strip()):
+            return
+
+        source_list = self._parse_input_to_list(source)
+        dest = dest.strip()
+
+        moved = []
+        failed = []
+        multiple = len(source_list) > 1
+
+        for src in source_list:
+            try:
+                if not os.path.exists(src):
+                    failed.append(f"{src} (источник не найден)")
+                    continue
+
+                # Куда именно перемещаем
+                if os.path.isdir(dest):
+                    # Назначение — существующая директория: перемещаем внутрь неё
+                    target = os.path.join(dest, os.path.basename(os.path.normpath(src)))
+                elif multiple:
+                    # Несколько источников, а назначение не директория — ошибка (как в настоящем mv)
+                    failed.append(
+                        f"{src} (несколько источников — назначение должно быть директорией)"
+                    )
+                    continue
+                else:
+                    # Переименование / перемещение в указанный путь
+                    target = dest
+
+                # Защита от перемещения в самого себя (для директорий)
+                if os.path.isdir(src) and os.path.abspath(target).startswith(
+                    os.path.abspath(src) + os.sep
+                ):
+                    failed.append(f"{src} (нельзя переместить директорию внутрь себя)")
+                    continue
+
+                shutil.move(src, target)
+                moved.append(f"{src} -> {target}")
+
+            except Exception as e:
+                failed.append(f"{src} ({str(e)})")
+
+        report = []
+        if moved:
+            report.append(f"Перемещено ({len(moved)}):\n" + "\n".join(moved))
+        if failed:
+            report.append(f"Ошибки ({len(failed)}):\n" + "\n".join(failed))
+        if not report:
+            report.append("Нечего перемещать.")
+
+        QMessageBox.information(parent_window, "Результат mv", "\n\n".join(report))
+
+    def handle_rm(self, parent_window):
+        """Удаление файлов и директорий (аналог rm, поддерживает -r для директорий и раскрытие {})"""
+        # 1. Запрашиваем цель(и)
+        target, ok = QInputDialog.getText(
+            parent_window,
+            "Команда rm",
+            "Введите имя файла/директории для удаления.\n"
+            "Поддерживаются скобки {}, например: file{1..3}.txt или temp_{A,B}:"
+        )
+        if not (ok and target.strip()):
+            return
+
+        target_list = self._parse_input_to_list(target)
+
+        # 2. Если среди целей есть директории — спрашиваем про рекурсию (аналог rm -r)
+        dirs_in_targets = [t for t in target_list if os.path.isdir(t)]
+        recursive = False
+        if dirs_in_targets:
+            reply = QMessageBox.question(
+                parent_window,
+                "rm: рекурсивное удаление",
+                "Среди целей есть директории.\n"
+                "Удалить их рекурсивно (аналог rm -r)?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            recursive = True
+
+        # 3. Подтверждение (rm — деструктивная операция!)
+        preview = "\n".join(f"  • {t}" for t in target_list)
+        confirm = QMessageBox.warning(
+            parent_window,
+            "Подтверждение удаления",
+            f"Вы действительно хотите удалить следующие объекты?\n\n{preview}\n\n"
+            "Это действие необратимо!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        removed_files = []
+        removed_dirs = []
+        failed = []
+
+        for t in target_list:
+            try:
+                if not os.path.exists(t):
+                    failed.append(f"{t} (не найдено)")
+                    continue
+
+                if os.path.isdir(t):
+                    if not recursive:
+                        failed.append(f"{t} (это директория, нужен -r)")
+                        continue
+                    shutil.rmtree(t)
+                    removed_dirs.append(t)
+                else:
+                    os.remove(t)
+                    removed_files.append(t)
+
+            except Exception as e:
+                failed.append(f"{t} ({str(e)})")
+
+        report = []
+        if removed_files:
+            report.append(f"Удалено файлов ({len(removed_files)}):\n" + "\n".join(removed_files))
+        if removed_dirs:
+            report.append(f"Удалено директорий ({len(removed_dirs)}):\n" + "\n".join(removed_dirs))
+        if failed:
+            report.append(f"Ошибки ({len(failed)}):\n" + "\n".join(failed))
+        if not report:
+            report.append("Нечего удалять.")
+
+        QMessageBox.information(parent_window, "Результат rm", "\n\n".join(report))
 
     def handle_pushd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")

@@ -87,10 +87,13 @@ class MainAppWindow(QWidget):
         sub_button_layout_view = QVBoxLayout()
 
         btn_touch = QPushButton("touch (Создать/обновить файл)", parent=sub_widget_view)
-        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_view) # Добавили кнопку mkdir
+        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_view)
+        btn_cp = QPushButton("cp (Копировать файл/директорию)", parent=sub_widget_view)
+        btn_mv = QPushButton("mv (Переместить/переименовать)", parent=sub_widget_view)
+        btn_rm = QPushButton("rm (Удалить файл/директорию)", parent=sub_widget_view)
         btn_back_view = QPushButton("Назад", parent=sub_widget_view)
 
-        buttons_sub_view = [btn_touch, btn_mkdir, btn_back_view] # Включили btn_mkdir в список для авторазметки
+        buttons_sub_view = [btn_touch, btn_mkdir, btn_cp, btn_mv, btn_rm, btn_back_view]
         for btn in buttons_sub_view:
             btn.setFixedWidth(450)
             btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; }")
@@ -131,7 +134,10 @@ class MainAppWindow(QWidget):
 
         # Логика экрана "Просмотр и редактирование" (Экран 3)
         btn_touch.clicked.connect(partial(self.cmd_logic.handle_touch, self)) 
-        btn_mkdir.clicked.connect(partial(self.cmd_logic.handle_mkdir, self)) # Привязали событие mkdir
+        btn_mkdir.clicked.connect(partial(self.cmd_logic.handle_mkdir, self))
+        btn_cp.clicked.connect(partial(self.cmd_logic.handle_cp, self))
+        btn_mv.clicked.connect(partial(self.cmd_logic.handle_mv, self))
+        btn_rm.clicked.connect(partial(self.cmd_logic.handle_rm, self))
         btn_back_view.clicked.connect(self.show_main_screen)
 
         # Финальная сборка главного окна
