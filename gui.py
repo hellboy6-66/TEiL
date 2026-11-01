@@ -86,11 +86,11 @@ class MainAppWindow(QWidget):
         sub_widget_view = QWidget(parent=self)
         sub_button_layout_view = QVBoxLayout()
 
-        # Добавляем сюда кнопку touch
         btn_touch = QPushButton("touch (Создать/обновить файл)", parent=sub_widget_view)
+        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_view) # Добавили кнопку mkdir
         btn_back_view = QPushButton("Назад", parent=sub_widget_view)
 
-        buttons_sub_view = [btn_touch, btn_back_view]
+        buttons_sub_view = [btn_touch, btn_mkdir, btn_back_view] # Включили btn_mkdir в список для авторазметки
         for btn in buttons_sub_view:
             btn.setFixedWidth(450)
             btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; }")
@@ -108,11 +108,9 @@ class MainAppWindow(QWidget):
         self.right_stacked_layout.addWidget(sub_widget_view)  # Индекс 2
 
         # ================= ПРИВЯЗКА СОБЫТИЙ К КНОПКАМ =================
-        # Переходы по экранам меню
         btn_file.clicked.connect(self.show_file_sub_screen)
-        btn_viewing.clicked.connect(self.show_view_sub_screen) # Открывает экран 3
+        btn_viewing.clicked.connect(self.show_view_sub_screen) 
         
-        # Заглушки для остальных меню
         in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
         btn_admin.clicked.connect(in_dev)
         btn_management.clicked.connect(in_dev)
@@ -132,7 +130,8 @@ class MainAppWindow(QWidget):
         btn_back_file.clicked.connect(self.show_main_screen)
 
         # Логика экрана "Просмотр и редактирование" (Экран 3)
-        btn_touch.clicked.connect(partial(self.cmd_logic.handle_touch, self)) # Привязываем touch здесь
+        btn_touch.clicked.connect(partial(self.cmd_logic.handle_touch, self)) 
+        btn_mkdir.clicked.connect(partial(self.cmd_logic.handle_mkdir, self)) # Привязали событие mkdir
         btn_back_view.clicked.connect(self.show_main_screen)
 
         # Финальная сборка главного окна

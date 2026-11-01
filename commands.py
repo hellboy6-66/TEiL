@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from PyQt6.QtWidgets import QInputDialog, QMessageBox
 
@@ -7,6 +8,44 @@ class TerminalCommands:
         self.dir_stack = []
         self.previous_working_dir = None
 
+    def _expand_braces(self, text):
+        """Внутренняя функция парсинга фигурных скобок (Brace Expansion)"""
+        match = re.search(r'\{([^}]+)\}', text)
+        if not match:
+            return [text]
+        
+        prefix = text[:match.start()]
+        suffix = text[match.end():]
+        body = match.group(1)
+        
+        expanded = []
+        # Проверяем диапазон типа {1..5} или {a..z}
+        if '..' in body:
+            parts = body.split('..')
+            if len(parts) == 2:
+                start, end = parts[0], parts[1]
+                # Если это числа
+                if start.isdigit() and end.isdigit():
+                    for i in range(int(start), int(end) + 1):
+                        expanded.extend(self._expand_braces(f"{prefix}{i}{suffix}"))
+                # Если это одиночные буквы
+                elif len(start) == 1 and len(end) == 1:
+                    for ord_char in range(ord(start), ord(end) + 1):
+                        expanded.extend(self._expand_braces(f"{prefix}{chr(ord_char)}{suffix}"))
+        else:
+            # Если это список через запятую типа {jpg,png,gif}
+            items = body.split(',')
+            for item in items:
+                expanded.extend(self._expand_braces(f"{prefix}{item.strip()}{suffix}"))
+        return expanded
+
+    def _parse_input_to_list(self, raw_input):
+        """Разбивает строку ввода по пробелам и раскрывает скобки для каждого элемента"""
+        final_list = []
+        for part in raw_input.strip().split():
+            final_list.extend(self._expand_braces(part))
+        return final_list
+
     def handle_cd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Смена директории", "Введите новый путь к директории:")
         if ok and text.strip():
@@ -14,7 +53,7 @@ class TerminalCommands:
             if os.path.isdir(path_to_check):
                 self.previous_working_dir = os.getcwd()
                 os.chdir(path_to_check)
-                callback_update_label(os.getcwd())
+                callback_update_label(os.getcwd()) # Исправлена опечатка geязыкtcwd() -> getcwd()
             else:
                 QMessageBox.warning(parent_window, "Ошибка", f"Директория не найдена:\n{path_to_check}")
 
@@ -42,51 +81,12 @@ class TerminalCommands:
             "Введите имена файлов (поддерживаются скобки {}, например: file{1..3}.txt или image.{jpg,png}):"
         )
         if ok and filename.strip():
-            raw_input = filename.strip()
-            
-            # Внутренняя функция парсинга фигурных скобок (Brace Expansion)
-            def expand_braces(text):
-                import re
-                # Ищем выражение внутри фигурных скобок: {что-то}
-                match = re.search(r'\{([^}]+)\}', text)
-                if not match:
-                    return [text]
-                
-                prefix = text[:match.start()]
-                suffix = text[match.end():]
-                body = match.group(1)
-                
-                expanded = []
-                # Проверяем диапазон типа {1..5} или {a..z}
-                if '..' in body:
-                    parts = body.split('..')
-                    if len(parts) == 2:
-                        start, end = parts[0], parts[1]
-                        # Если это числа
-                        if start.isdigit() and end.isdigit():
-                            for i in range(int(start), int(end) + 1):
-                                expanded.extend(expand_braces(f"{prefix}{i}{suffix}"))
-                        # Если это одиночные буквы
-                        elif len(start) == 1 and len(end) == 1:
-                            for ord_char in range(ord(start), ord(end) + 1):
-                                expanded.extend(expand_braces(f"{prefix}{chr(ord_char)}{suffix}"))
-                else:
-                    # Если это список через запятую типа {jpg,png,gif}
-                    items = body.split(',')
-                    for item in items:
-                        expanded.extend(expand_braces(f"{prefix}{item.strip()}{suffix}"))
-                return expanded
-
-            # Сначала разбиваем ввод по пробелам, если пользователь ввел несколько разных масок
-            file_list = []
-            for part in raw_input.split():
-                file_list.extend(expand_braces(part))
+            file_list = self._parse_input_to_list(filename)
             
             created_files = []
             updated_files = []
             failed_files = []
 
-            # Перебираем итоговый раскрытый список файлов
             for file_name in file_list:
                 try:
                     if os.path.exists(file_name):
@@ -99,7 +99,6 @@ class TerminalCommands:
                 except Exception as e:
                     failed_files.append(f"{file_name} ({str(e)})")
 
-            # Вывод красивого диалогового отчета
             report = []
             if created_files:
                 report.append(f"Создано файлов ({len(created_files)}):\n" + ", ".join(created_files))
@@ -110,6 +109,37 @@ class TerminalCommands:
 
             QMessageBox.information(parent_window, "Результат touch", "\n\n".join(report))
 
+    def handle_mkdir(self, parent_window):
+        dirname, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда mkdir", 
+            "Введите имена директорий (поддерживаются скобки {}, например: dir1 dir2 или project_{A,B}):"
+        )
+        if ok and dirname.strip():
+            dir_list = self._parse_input_to_list(dirname)
+            created_dirs = []
+            exist_dirs = []
+            failed_dirs = []
+
+            for d_name in dir_list:
+                try:
+                    if os.path.exists(d_name):
+                        exist_dirs.append(d_name)
+                    else:
+                        os.makedirs(d_name, exist_ok=True)
+                        created_dirs.append(d_name)
+                except Exception as e:
+                    failed_dirs.append(f"{d_name} ({str(e)})")
+
+            report = []
+            if created_dirs:
+                report.append(f"Создано директорий ({len(created_dirs)}):\n" + ", ".join(created_dirs))
+            if exist_dirs:
+                report.append(f"Уже существуют ({len(exist_dirs)}):\n" + ", ".join(exist_dirs))
+            if failed_dirs:
+                report.append(f"Ошибки при создании ({len(failed_dirs)}):\n" + "\n".join(failed_dirs))
+
+            QMessageBox.information(parent_window, "Result: mkdir", "\n\n".join(report))
 
     def handle_pushd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
@@ -145,7 +175,7 @@ class TerminalCommands:
 
     def handle_cd_minus(self, parent_window, callback_update_label):
         if self.previous_working_dir is None:
-            QMessageBox.warning(parent_window, "cd -", "Предыдущая директория отсутствует (OLDPWD не задан)")
+            QMessageBox.warning(parent_window, "cd -", "Предыдущая директония отсутствует (OLDPWD не задан)")
         else:
             temp_current = os.getcwd()
             os.chdir(self.previous_working_dir)
@@ -170,18 +200,33 @@ class TerminalCommands:
                 QMessageBox.critical(parent_window, "Ошибка find", f"Команда завершилась с ошибкой:\n{e.output}")
 
     def handle_locate(self, parent_window):
-        filename, ok = QInputDialog.getText(parent_window, "Команда locate", "Введите ключевое слово для глобального поиска по системе:")
+        filename, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда locate", 
+            "Введите ключевое слово для глобального поиска по системе:"
+        )
         if ok and filename.strip():
             command = ["locate", filename.strip()]
             try:
+                # Запуск системной команды locate
                 result = subprocess.check_output(command, text=True, stderr=subprocess.STDOUT)
+                
                 if not result.strip():
                     result = "Ничего не найдено в базе данных системы."
-                lines = result.splitlines()
-                if len(lines) > 30:
-                    result = "\n".join(lines[:30]) + f"\n\n... и еще {len(lines) - 30} строк (показаны первые 30 результатов)."
+                else:
+                    # Ограничиваем вывод locate до 30 строк, если результатов слишком много
+                    lines = result.splitlines()
+                    if len(lines) > 30:
+                        result = "\n".join(lines[:30]) + f"\n\n... и еще {len(lines) - 30} строк (показаны первые 30 результатов)."
+                
                 QMessageBox.information(parent_window, "Результат locate", result)
+                
             except subprocess.CalledProcessError:
-                QMessageBox.warning(parent_window, "Предупреждение locate", "Ничего не найдено или утилита locate не установлена.")
+                # Команда locate возвращает код ошибки 1, если ничего не найдено
+                QMessageBox.warning(
+                    parent_window, 
+                    "Предупреждение locate", 
+                    "Ничего не найдено или утилита locate не установлена в вашей системе Linux."
+                )
             except Exception as e:
                 QMessageBox.critical(parent_window, "Ошибка", f"Не удалось выполнить поиск:\n{str(e)}")
