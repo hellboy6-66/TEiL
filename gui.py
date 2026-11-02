@@ -36,18 +36,22 @@ class MainAppWindow(QWidget):
         menu_widget = QWidget(parent=self)
         button_layout = QVBoxLayout()
 
-        btn_file = QPushButton('Работа с файлами', parent=menu_widget)
-        btn_viewing = QPushButton("Просмотр и редактирование содержимого файла", parent=menu_widget)
-        btn_admin = QPushButton("Адменистрирование пользователей и прав", parent=menu_widget)
-        btn_management = QPushButton("Управление процессами и системой", parent=menu_widget)
-        btn_network = QPushButton("Сеть и подключение", parent=menu_widget)
-        btn_package = QPushButton("Управление пакетами", parent=menu_widget)
-        btn_archiving = QPushButton("Архивация и сжатие", parent=menu_widget)
+        # Строго по списку с картинки
+        btn_nav = QPushButton("Навигация и работа с каталогами", parent=menu_widget)
+        btn_files = QPushButton("Управление файлами и папками", parent=menu_widget)
+        btn_text = QPushButton("Просмотр и редактирование текста", parent=menu_widget)
+        btn_perms = QPushButton("Права доступа и владельцы", parent=menu_widget)
+        btn_proc = QPushButton("Управление процессами", parent=menu_widget)
+        btn_sys = QPushButton("Системная информация и оборудование", parent=menu_widget)
+        btn_users = QPushButton("Управление пользователями и группами", parent=menu_widget)
+        btn_pkg = QPushButton("Управление пакетами (ПО)", parent=menu_widget)
+        btn_net = QPushButton("Сеть и интернет", parent=menu_widget)
+        btn_help = QPushButton("Справочные команды", parent=menu_widget)
 
-        buttons_main = [btn_file, btn_viewing, btn_admin, btn_management, btn_network, btn_package, btn_archiving]
+        buttons_main = [btn_nav, btn_files, btn_text, btn_perms, btn_proc, btn_sys, btn_users, btn_pkg, btn_net, btn_help]
         for btn in buttons_main:
             btn.setFixedWidth(450) 
-            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; }")
+            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; padding: 10px; }")
             button_layout.addWidget(btn)
         button_layout.addStretch()
 
@@ -56,89 +60,93 @@ class MainAppWindow(QWidget):
         menu_layout.addLayout(button_layout)
         menu_widget.setLayout(menu_layout)
 
-        # --- ЭКРАН 2: Подменю "Работа с файлами" (Индекс 1) ---
-        sub_widget_file = QWidget(parent=self)
-        sub_button_layout_file = QVBoxLayout()
+        # --- ЭКРАН 2: Подменю "Навигация и работа с каталогами" (Индекс 1) ---
+        sub_widget_nav = QWidget(parent=self)
+        sub_button_layout_nav = QVBoxLayout()
 
-        btn_cd = QPushButton("cd (Смена директории)", parent=sub_widget_file)
-        btn_ls = QPushButton("ls (Список файлов)", parent=sub_widget_file)
-        btn_pushd = QPushButton("pushd (Поместить в стек и перейти)", parent=sub_widget_file)
-        btn_popd = QPushButton("popd (Извлечь из стека и вернуться)", parent=sub_widget_file)
-        btn_dirs = QPushButton("dirs (Показать стек директорий)", parent=sub_widget_file)
-        btn_cd_minus = QPushButton("cd - (Вернуться в прошлую папку)", parent=sub_widget_file)
-        btn_find = QPushButton("find (Поиск файлов в текущей папке)", parent=sub_widget_file)
-        btn_locate = QPushButton("locate (Быстрый поиск по системе)", parent=sub_widget_file)
-        btn_back_file = QPushButton("Назад", parent=sub_widget_file)
+        btn_cd = QPushButton("cd (Смена директории)", parent=sub_widget_nav)
+        btn_ls = QPushButton("ls (Список файлов)", parent=sub_widget_nav)
+        btn_pushd = QPushButton("pushd (Поместить в стек и перейти)", parent=sub_widget_nav)
+        btn_popd = QPushButton("popd (Извлечь из стека и вернуться)", parent=sub_widget_nav)
+        btn_dirs = QPushButton("dirs (Показать стек директорий)", parent=sub_widget_nav)
+        btn_cd_minus = QPushButton("cd - (Вернуться в прошлую папку)", parent=sub_widget_nav)
+        btn_back_nav = QPushButton("Назад", parent=sub_widget_nav)
 
-        buttons_sub_file = [btn_cd, btn_ls, btn_pushd, btn_popd, btn_dirs, btn_cd_minus, btn_find, btn_locate, btn_back_file]
-        for btn in buttons_sub_file:
+        buttons_sub_nav = [btn_cd, btn_ls, btn_pushd, btn_popd, btn_dirs, btn_cd_minus, btn_back_nav]
+        for btn in buttons_sub_nav:
             btn.setFixedWidth(450) 
-            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; }")
-            sub_button_layout_file.addWidget(btn)
-        sub_button_layout_file.addStretch()
+            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; padding: 10px; }")
+            sub_button_layout_nav.addWidget(btn)
+        sub_button_layout_nav.addStretch()
 
-        sub_menu_layout_file = QHBoxLayout()
-        sub_menu_layout_file.addStretch()
-        sub_menu_layout_file.addLayout(sub_button_layout_file)
-        sub_widget_file.setLayout(sub_menu_layout_file)
+        sub_menu_layout_nav = QHBoxLayout()
+        sub_menu_layout_nav.addStretch()
+        sub_menu_layout_nav.addLayout(sub_button_layout_nav)
+        sub_widget_nav.setLayout(sub_menu_layout_nav)
 
-        # --- ЭКРАН 3: Подменю "Просмотр и редактирование" (Индекс 2) ---
-        sub_widget_view = QWidget(parent=self)
-        sub_button_layout_view = QVBoxLayout()
+        # --- ЭКРАН 3: Подменю "Управление файлами и папками" (Индекс 2) ---
+        sub_widget_files = QWidget(parent=self)
+        sub_button_layout_files = QVBoxLayout()
 
-        btn_touch = QPushButton("touch (Создать/обновить файл)", parent=sub_widget_view)
-        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_view)
-        btn_cp = QPushButton("cp (Копировать файл/директорию)", parent=sub_widget_view)
-        btn_mv = QPushButton("mv (Переместить/переименовать)", parent=sub_widget_view)
-        btn_rm = QPushButton("rm (Удалить файл/директорию)", parent=sub_widget_view)
-        btn_back_view = QPushButton("Назад", parent=sub_widget_view)
+        btn_touch = QPushButton("touch (Создать/обновить файл)", parent=sub_widget_files)
+        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_files)
+        btn_cp = QPushButton("cp (Копировать файл/директорию)", parent=sub_widget_files)
+        btn_mv = QPushButton("mv (Переместить/переименовать)", parent=sub_widget_files)
+        btn_rm = QPushButton("rm (Удалить файл/директорию)", parent=sub_widget_files)
+        btn_find = QPushButton("find (Поиск файлов в текущей папке)", parent=sub_widget_files)
+        btn_locate = QPushButton("locate (Быстрый поиск по системе)", parent=sub_widget_files)
+        btn_back_files = QPushButton("Назад", parent=sub_widget_files)
 
-        buttons_sub_view = [btn_touch, btn_mkdir, btn_cp, btn_mv, btn_rm, btn_back_view]
-        for btn in buttons_sub_view:
+        buttons_sub_files = [btn_touch, btn_mkdir, btn_cp, btn_mv, btn_rm, btn_find, btn_locate, btn_back_files]
+        for btn in buttons_sub_files:
             btn.setFixedWidth(450)
-            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; }")
-            sub_button_layout_view.addWidget(btn)
-        sub_button_layout_view.addStretch()
+            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; padding: 10px; }")
+            sub_button_layout_files.addWidget(btn)
+        sub_button_layout_files.addStretch()
 
-        sub_menu_layout_view = QHBoxLayout()
-        sub_menu_layout_view.addStretch()
-        sub_menu_layout_view.addLayout(sub_button_layout_view)
-        sub_widget_view.setLayout(sub_menu_layout_view)
+        sub_menu_layout_files = QHBoxLayout()
+        sub_menu_layout_files.addStretch()
+        sub_menu_layout_files.addLayout(sub_button_layout_files)
+        sub_widget_files.setLayout(sub_menu_layout_files)
 
         # Добавляем все три экрана в стек
         self.right_stacked_layout.addWidget(menu_widget)       # Индекс 0
-        self.right_stacked_layout.addWidget(sub_widget_file)  # Индекс 1
-        self.right_stacked_layout.addWidget(sub_widget_view)  # Индекс 2
+        self.right_stacked_layout.addWidget(sub_widget_nav)    # Индекс 1
+        self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
 
         # ================= ПРИВЯЗКА СОБЫТИЙ К КНОПКАМ =================
-        btn_file.clicked.connect(self.show_file_sub_screen)
-        btn_viewing.clicked.connect(self.show_view_sub_screen) 
+        btn_nav.clicked.connect(self.show_nav_sub_screen)
+        btn_files.clicked.connect(self.show_files_sub_screen) 
         
+        # Кнопки в разработке
         in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
-        btn_admin.clicked.connect(in_dev)
-        btn_management.clicked.connect(in_dev)
-        btn_network.clicked.connect(in_dev)
-        btn_package.clicked.connect(in_dev)
-        btn_archiving.clicked.connect(in_dev)
+        btn_text.clicked.connect(in_dev)
+        btn_perms.clicked.connect(in_dev)
+        btn_proc.clicked.connect(in_dev)
+        btn_sys.clicked.connect(in_dev)
+        btn_users.clicked.connect(in_dev)
+        btn_pkg.clicked.connect(in_dev)
+        btn_net.clicked.connect(in_dev)
+        btn_help.clicked.connect(in_dev)
 
-        # Логика экрана "Работа с файлами" (Экран 2)
+        # Логика экрана "Навигация и работа с каталогами" (Экран 1)
         btn_cd.clicked.connect(partial(self.cmd_logic.handle_cd, self, self.update_directory_label))
         btn_ls.clicked.connect(partial(self.cmd_logic.handle_ls, self))
         btn_pushd.clicked.connect(partial(self.cmd_logic.handle_pushd, self, self.update_directory_label))
         btn_popd.clicked.connect(partial(self.cmd_logic.handle_popd, self, self.update_directory_label))
         btn_dirs.clicked.connect(partial(self.cmd_logic.handle_dirs, self))
         btn_cd_minus.clicked.connect(partial(self.cmd_logic.handle_cd_minus, self, self.update_directory_label))
-        btn_find.clicked.connect(partial(self.cmd_logic.handle_find, self))
-        btn_locate.clicked.connect(partial(self.cmd_logic.handle_locate, self))
-        btn_back_file.clicked.connect(self.show_main_screen)
+        btn_back_nav.clicked.connect(self.show_main_screen)
 
-        # Логика экрана "Просмотр и редактирование" (Экран 3)
+        # Логика экрана "Управление файлами и папками" (Экран 2)
         btn_touch.clicked.connect(partial(self.cmd_logic.handle_touch, self)) 
         btn_mkdir.clicked.connect(partial(self.cmd_logic.handle_mkdir, self))
         btn_cp.clicked.connect(partial(self.cmd_logic.handle_cp, self))
         btn_mv.clicked.connect(partial(self.cmd_logic.handle_mv, self))
         btn_rm.clicked.connect(partial(self.cmd_logic.handle_rm, self))
-        btn_back_view.clicked.connect(self.show_main_screen)
+        btn_find.clicked.connect(partial(self.cmd_logic.handle_find, self))
+        btn_locate.clicked.connect(partial(self.cmd_logic.handle_locate, self))
+        btn_back_files.clicked.connect(self.show_main_screen)
 
         # Финальная сборка главного окна
         main_layout = QHBoxLayout(self)
@@ -146,10 +154,10 @@ class MainAppWindow(QWidget):
         main_layout.addStretch()
         main_layout.addLayout(self.right_stacked_layout)
 
-    def show_file_sub_screen(self):
+    def show_nav_sub_screen(self):
         self.right_stacked_layout.setCurrentIndex(1) 
 
-    def show_view_sub_screen(self):
+    def show_files_sub_screen(self):
         self.right_stacked_layout.setCurrentIndex(2) 
 
     def show_main_screen(self):
