@@ -2,7 +2,6 @@ import os
 import re
 import shutil
 import subprocess
-# Добавили QDialog, QVBoxLayout, QPlainTextEdit, QPushButton для окна less
 from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
                              QVBoxLayout, QPlainTextEdit, QPushButton)
 
@@ -294,7 +293,6 @@ class TerminalCommands:
         print_out(final_text)
 
     def handle_less(self, parent_window, print_out):
-        """Постраничный просмотр файла в отдельном окне (аналог less)"""
         filename, ok = QInputDialog.getText(parent_window, "Команда less", "Введите имя файла для просмотра (или {}):")
         if not (ok and filename.strip()): return
 
@@ -326,14 +324,12 @@ class TerminalCommands:
             print_out("Файл пуст или не найден.")
             return
 
-        # Создаем отдельное окно (диалог) для less
         dialog = QDialog(parent_window)
         dialog.setWindowTitle(f"less: {filename}")
-        dialog.resize(800, 600)  # Размер окна
+        dialog.resize(800, 600)
 
         layout = QVBoxLayout(dialog)
 
-        # Текстовое поле (только для чтения, с прокруткой)
         text_area = QPlainTextEdit(dialog)
         text_area.setPlainText(final_text)
         text_area.setReadOnly(True)
@@ -347,17 +343,62 @@ class TerminalCommands:
             }
         """)
 
-        btn_close = QPushButton("Закрыть", dialog)
+        btn_close = QPushButton("Закрыть (q)", dialog)
         btn_close.clicked.connect(dialog.accept)
 
         layout.addWidget(text_area)
         layout.addWidget(btn_close)
 
-        # Выводим подтверждение в основную консоль
         print_out(f"Открыт просмотр файла: {filename} (нажмите 'Закрыть' для выхода)")
-        
-        # Открываем окно (блокирует основной интерфейс до закрытия)
         dialog.exec()
+
+    def handle_head(self, parent_window, print_out):
+        """Вывод первых N строк файла (аналог head)"""
+        filename, ok = QInputDialog.getText(parent_window, "Команда head", "Введите имена файлов для просмотра (или {}):")
+        if not (ok and filename.strip()): return
+
+        lines_str, ok = QInputDialog.getText(parent_window, "Команда head", "Сколько первых строк вывести? (оставьте пустым для 10):")
+        if not ok: return
+        
+        try:
+            num_lines = int(lines_str.strip()) if lines_str.strip() else 10
+            if num_lines < 1: num_lines = 10
+        except ValueError:
+            num_lines = 10
+
+        file_list = self._parse_input_to_list(filename)
+        output_parts, errors = [], []
+        multiple_files = len(file_list) > 1
+
+        for f_name in file_list:
+            try:
+                if not os.path.exists(f_name):
+                    errors.append(f"{f_name}: Нет такого файла или каталога")
+                    continue
+                if os.path.isdir(f_name):
+                    errors.append(f"{f_name}: Это каталог")
+                    continue
+                
+                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
+                    lines = file.readlines()
+                    content = "".join(lines[:num_lines])
+                    if len(lines) > num_lines and not content.endswith('\n'):
+                        content += '\n'
+                    
+                    if multiple_files:
+                        output_parts.append(f"==> {f_name} <==\n{content}")
+                    else:
+                        output_parts.append(content)
+            except Exception as e:
+                errors.append(f"{f_name}: {str(e)}")
+
+        final_text = "\n".join(output_parts)
+        if errors:
+            if final_text: final_text += "\n\n"
+            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
+
+        if not final_text.strip(): final_text = "(Нет вывода)"
+        print_out(final_text)
 
     def handle_pushd(self, parent_window, callback_update_label, print_out):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")

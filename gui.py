@@ -133,10 +133,11 @@ class MainAppWindow(QWidget):
         sub_button_layout_text.setContentsMargins(0, 0, 0, 0)
         
         btn_cat = QPushButton("cat (Вывод содержимого файла)", parent=sub_widget_text)
-        btn_less = QPushButton("less (Постраничный просмотр)", parent=sub_widget_text) # Новая кнопка
+        btn_less = QPushButton("less (Постраничный просмотр)", parent=sub_widget_text)
+        btn_head = QPushButton("head (Вывод первых N строк)", parent=sub_widget_text) # Новая кнопка
         btn_back_text = QPushButton("Назад", parent=sub_widget_text)
         
-        buttons_sub_text = [btn_cat, btn_less, btn_back_text] # Добавили btn_less
+        buttons_sub_text = [btn_cat, btn_less, btn_head, btn_back_text] # Добавили btn_head
         for btn in buttons_sub_text:
             btn.setFixedWidth(350)
             btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
@@ -193,7 +194,8 @@ class MainAppWindow(QWidget):
 
         # --- Текст ---
         btn_cat.clicked.connect(lambda: self.run_command("cat", self.cmd_logic.handle_cat, self, self.print_to_console))
-        btn_less.clicked.connect(lambda: self.run_command("less", self.cmd_logic.handle_less, self, self.print_to_console)) # Привязка less
+        btn_less.clicked.connect(lambda: self.run_command("less", self.cmd_logic.handle_less, self, self.print_to_console))
+        btn_head.clicked.connect(lambda: self.run_command("head", self.cmd_logic.handle_head, self, self.print_to_console)) # Привязка head
         btn_back_text.clicked.connect(self.show_main_screen)
 
         # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================
