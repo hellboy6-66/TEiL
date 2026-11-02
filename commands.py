@@ -289,11 +289,8 @@ class TerminalCommands:
             final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
 
         if not final_text.strip(): final_text = "(Нет вывода)"
-        
-        max_chars = 15000
-        if len(final_text) > max_chars:
-            final_text = final_text[:max_chars] + f"\n\n... [Вывод обрезан. Показаны первые {max_chars} символов]"
 
+        # Ограничение по длине убрано
         print_out(final_text)
 
     def handle_pushd(self, parent_window, callback_update_label, print_out):
@@ -347,9 +344,7 @@ class TerminalCommands:
                 if not result.strip():
                     print_out("Файлы не найдены.")
                 else:
-                    lines = result.splitlines()
-                    if len(lines) > 50:
-                        result = "\n".join(lines[:50]) + f"\n\n... и еще {len(lines) - 50} строк (показаны первые 50)."
+                    # Ограничение по строкам убрано
                     print_out(result)
             except subprocess.CalledProcessError as e:
                 print_out(f"Ошибка find:\n{e.output}")
@@ -363,9 +358,7 @@ class TerminalCommands:
                 if not result.strip():
                     print_out("Ничего не найдено в базе данных системы.")
                 else:
-                    lines = result.splitlines()
-                    if len(lines) > 50:
-                        result = "\n".join(lines[:50]) + f"\n\n... и еще {len(lines) - 50} строк (показаны первые 50)."
+                    # Ограничение по строкам убрано
                     print_out(result)
             except subprocess.CalledProcessError:
                 print_out("Предупреждение locate: Ничего не найдено или утилита locate не установлена.")
