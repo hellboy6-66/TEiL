@@ -375,6 +375,59 @@ class TerminalCommands:
 
         QMessageBox.information(parent_window, "Результат rm", "\n\n".join(report))
 
+    def handle_cat(self, parent_window):
+        """Вывод содержимого файлов на экран (аналог cat, поддерживает раскрытие {})"""
+        filename, ok = QInputDialog.getText(
+            parent_window,
+            "Команда cat",
+            "Введите имена файлов для просмотра.\n"
+            "Поддерживаются скобки {}, например: file1.txt file{2..4}.txt:"
+        )
+        if not (ok and filename.strip()):
+            return
+
+        file_list = self._parse_input_to_list(filename)
+        
+        output_content = []
+        errors = []
+
+        for f_name in file_list:
+            try:
+                if not os.path.exists(f_name):
+                    errors.append(f"{f_name}: Нет такого файла или каталога")
+                    continue
+                if os.path.isdir(f_name):
+                    errors.append(f"{f_name}: Это каталог")
+                    continue
+                
+                # errors='replace' предотвратит падение при чтении бинарных файлов
+                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
+                    content = file.read()
+                    if content:
+                        output_content.append(content)
+                    else:
+                        output_content.append(f"--- (Файл {f_name} пуст) ---")
+                        
+            except Exception as e:
+                errors.append(f"{f_name}: {str(e)}")
+
+        final_text = "".join(output_content)
+        
+        if errors:
+            if final_text:
+                final_text += "\n\n"
+            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
+
+        if not final_text.strip():
+            final_text = "(Нет вывода)"
+
+        # Ограничиваем вывод, чтобы QMessageBox не завис на гигантских файлах
+        max_chars = 10000
+        if len(final_text) > max_chars:
+            final_text = final_text[:max_chars] + f"\n\n... [Вывод обрезан. Показаны первые {max_chars} символов]"
+
+        QMessageBox.information(parent_window, "Результат cat", final_text)
+
     def handle_pushd(self, parent_window, callback_update_label):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
         if ok and text.strip():

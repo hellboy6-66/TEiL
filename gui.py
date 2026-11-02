@@ -32,11 +32,10 @@ class MainAppWindow(QWidget):
         # ================= ПРАВАЯ ЧАСТЬ: МЕНЮ С ЭКРАНАМИ =================
         self.right_stacked_layout = QStackedLayout()
 
-        # --- ЭКРАН 1: Главное меню (Индекс 0) ---
+        # --- ЭКРАН 0: Главное меню ---
         menu_widget = QWidget(parent=self)
         button_layout = QVBoxLayout()
 
-        # Строго по списку с картинки
         btn_nav = QPushButton("Навигация и работа с каталогами", parent=menu_widget)
         btn_files = QPushButton("Управление файлами и папками", parent=menu_widget)
         btn_text = QPushButton("Просмотр и редактирование текста", parent=menu_widget)
@@ -60,7 +59,7 @@ class MainAppWindow(QWidget):
         menu_layout.addLayout(button_layout)
         menu_widget.setLayout(menu_layout)
 
-        # --- ЭКРАН 2: Подменю "Навигация и работа с каталогами" (Индекс 1) ---
+        # --- ЭКРАН 1: Подменю "Навигация и работа с каталогами" ---
         sub_widget_nav = QWidget(parent=self)
         sub_button_layout_nav = QVBoxLayout()
 
@@ -84,7 +83,7 @@ class MainAppWindow(QWidget):
         sub_menu_layout_nav.addLayout(sub_button_layout_nav)
         sub_widget_nav.setLayout(sub_menu_layout_nav)
 
-        # --- ЭКРАН 3: Подменю "Управление файлами и папками" (Индекс 2) ---
+        # --- ЭКРАН 2: Подменю "Управление файлами и папками" ---
         sub_widget_files = QWidget(parent=self)
         sub_button_layout_files = QVBoxLayout()
 
@@ -109,18 +108,38 @@ class MainAppWindow(QWidget):
         sub_menu_layout_files.addLayout(sub_button_layout_files)
         sub_widget_files.setLayout(sub_menu_layout_files)
 
-        # Добавляем все три экрана в стек
+        # --- ЭКРАН 3: Подменю "Просмотр и редактирование текста" ---
+        sub_widget_text = QWidget(parent=self)
+        sub_button_layout_text = QVBoxLayout()
+
+        btn_cat = QPushButton("cat (Вывод содержимого файла)", parent=sub_widget_text)
+        btn_back_text = QPushButton("Назад", parent=sub_widget_text)
+
+        buttons_sub_text = [btn_cat, btn_back_text]
+        for btn in buttons_sub_text:
+            btn.setFixedWidth(450)
+            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; padding: 10px; }")
+            sub_button_layout_text.addWidget(btn)
+        sub_button_layout_text.addStretch()
+
+        sub_menu_layout_text = QHBoxLayout()
+        sub_menu_layout_text.addStretch()
+        sub_menu_layout_text.addLayout(sub_button_layout_text)
+        sub_widget_text.setLayout(sub_menu_layout_text)
+
+        # Добавляем все экраны в стек
         self.right_stacked_layout.addWidget(menu_widget)       # Индекс 0
         self.right_stacked_layout.addWidget(sub_widget_nav)    # Индекс 1
         self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
+        self.right_stacked_layout.addWidget(sub_widget_text)   # Индекс 3
 
         # ================= ПРИВЯЗКА СОБЫТИЙ К КНОПКАМ =================
         btn_nav.clicked.connect(self.show_nav_sub_screen)
         btn_files.clicked.connect(self.show_files_sub_screen) 
+        btn_text.clicked.connect(self.show_text_sub_screen)
         
         # Кнопки в разработке
         in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
-        btn_text.clicked.connect(in_dev)
         btn_perms.clicked.connect(in_dev)
         btn_proc.clicked.connect(in_dev)
         btn_sys.clicked.connect(in_dev)
@@ -148,6 +167,10 @@ class MainAppWindow(QWidget):
         btn_locate.clicked.connect(partial(self.cmd_logic.handle_locate, self))
         btn_back_files.clicked.connect(self.show_main_screen)
 
+        # Логика экрана "Просмотр и редактирование текста" (Экран 3)
+        btn_cat.clicked.connect(partial(self.cmd_logic.handle_cat, self))
+        btn_back_text.clicked.connect(self.show_main_screen)
+
         # Финальная сборка главного окна
         main_layout = QHBoxLayout(self)
         main_layout.addLayout(left_v_layout, stretch=1)
@@ -159,6 +182,9 @@ class MainAppWindow(QWidget):
 
     def show_files_sub_screen(self):
         self.right_stacked_layout.setCurrentIndex(2) 
+
+    def show_text_sub_screen(self):
+        self.right_stacked_layout.setCurrentIndex(3)
 
     def show_main_screen(self):
         self.right_stacked_layout.setCurrentIndex(0)  
