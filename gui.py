@@ -18,25 +18,18 @@ class MainAppWindow(QWidget):
         # ================= ЛЕВАЯ ЧАСТЬ: ЗАГОЛОВОК И БЕЛАЯ ПАНЕЛЬ =================
         current_dir = os.getcwd()
         
-        # Убрали \n, текст теперь в одну строку
         self.dir_label = QLabel(f"Текущая директория: {current_dir}", parent=self)
-        # Выравниваем текст по левому краю (как заголовок)
         self.dir_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        # Запрещаем перенос строк
         self.dir_label.setWordWrap(False)
         
         font = self.dir_label.font()
         font.setPointSize(12)
         font.setBold(True)
         self.dir_label.setFont(font)
-        
-        # Небольшой отступ слева для красоты, чтобы текст не прилипал к краю
         self.dir_label.setStyleSheet("padding-left: 5px;")
 
-        # Панель вывода (Терминал)
         self.output_console = QPlainTextEdit(parent=self)
         self.output_console.setReadOnly(True)
-        # Стилизация под консоль Linux
         self.output_console.setStyleSheet("""
             QPlainTextEdit {
                 background-color: white;
@@ -48,7 +41,6 @@ class MainAppWindow(QWidget):
             }
         """)
 
-        # Левая вертикальная компоновка
         left_layout = QVBoxLayout()
         left_layout.addWidget(self.dir_label)
         left_layout.addWidget(self.output_console)
@@ -59,7 +51,6 @@ class MainAppWindow(QWidget):
         # --- ЭКРАН 0: Главное меню ---
         menu_widget = QWidget(parent=self)
         button_layout = QVBoxLayout()
-        # Убираем отступы у самой колонки кнопок, чтобы верхняя кнопка была на одном уровне с текстом директории
         button_layout.setContentsMargins(0, 0, 0, 0) 
 
         btn_nav = QPushButton("Навигация и работа с каталогами", parent=menu_widget)
@@ -81,7 +72,7 @@ class MainAppWindow(QWidget):
         button_layout.addStretch()
 
         menu_layout = QHBoxLayout()
-        menu_layout.setContentsMargins(0, 0, 0, 0) # Убираем отступы
+        menu_layout.setContentsMargins(0, 0, 0, 0)
         menu_layout.addLayout(button_layout)
         menu_widget.setLayout(menu_layout)
 
@@ -142,9 +133,10 @@ class MainAppWindow(QWidget):
         sub_button_layout_text.setContentsMargins(0, 0, 0, 0)
         
         btn_cat = QPushButton("cat (Вывод содержимого файла)", parent=sub_widget_text)
+        btn_less = QPushButton("less (Постраничный просмотр)", parent=sub_widget_text) # Новая кнопка
         btn_back_text = QPushButton("Назад", parent=sub_widget_text)
         
-        buttons_sub_text = [btn_cat, btn_back_text]
+        buttons_sub_text = [btn_cat, btn_less, btn_back_text] # Добавили btn_less
         for btn in buttons_sub_text:
             btn.setFixedWidth(350)
             btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
@@ -162,7 +154,6 @@ class MainAppWindow(QWidget):
         self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
         self.right_stacked_layout.addWidget(sub_widget_text)   # Индекс 3
 
-        # Правая вертикальная компоновка
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addLayout(self.right_stacked_layout)
@@ -202,13 +193,13 @@ class MainAppWindow(QWidget):
 
         # --- Текст ---
         btn_cat.clicked.connect(lambda: self.run_command("cat", self.cmd_logic.handle_cat, self, self.print_to_console))
+        btn_less.clicked.connect(lambda: self.run_command("less", self.cmd_logic.handle_less, self, self.print_to_console)) # Привязка less
         btn_back_text.clicked.connect(self.show_main_screen)
 
         # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================
         main_layout = QHBoxLayout(self)
-        # Задаем общие отступы для всего окна (сверху, слева, справа, снизу)
         main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(20) # Отступ между левой панелью и правой колонкой
+        main_layout.setSpacing(20)
         
         main_layout.addLayout(left_layout, stretch=7)
         main_layout.addLayout(right_layout, stretch=3)
@@ -218,12 +209,10 @@ class MainAppWindow(QWidget):
         self.print_to_console("Для начала работы выберите раздел справа.\n")
 
     def print_to_console(self, text):
-        """Добавляет текст в панель вывода"""
         self.output_console.appendPlainText(text)
         self.output_console.ensureCursorVisible()
 
     def run_command(self, cmd_name, command_func, *args):
-        """Выводит название команды в консоль и запускает её выполнение"""
         self.print_to_console(f"\nteil@linux:~$ {cmd_name}")
         command_func(*args)
 
@@ -240,5 +229,4 @@ class MainAppWindow(QWidget):
         self.right_stacked_layout.setCurrentIndex(0)  
 
     def update_directory_label(self, new_path):
-        # Обновили строку, убрали \n
         self.dir_label.setText(f"Текущая директория: {new_path}")

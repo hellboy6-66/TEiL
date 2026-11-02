@@ -2,7 +2,9 @@ import os
 import re
 import shutil
 import subprocess
-from PyQt6.QtWidgets import QInputDialog, QMessageBox
+# Добавили QDialog, QVBoxLayout, QPlainTextEdit, QPushButton для окна less
+from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
+                             QVBoxLayout, QPlainTextEdit, QPushButton)
 
 class TerminalCommands:
     def __init__(self):
@@ -289,9 +291,73 @@ class TerminalCommands:
             final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
 
         if not final_text.strip(): final_text = "(Нет вывода)"
-
-        # Ограничение по длине убрано
         print_out(final_text)
+
+    def handle_less(self, parent_window, print_out):
+        """Постраничный просмотр файла в отдельном окне (аналог less)"""
+        filename, ok = QInputDialog.getText(parent_window, "Команда less", "Введите имя файла для просмотра (или {}):")
+        if not (ok and filename.strip()): return
+
+        file_list = self._parse_input_to_list(filename)
+        output_content, errors = [], []
+
+        for f_name in file_list:
+            try:
+                if not os.path.exists(f_name):
+                    errors.append(f"{f_name}: Нет такого файла или каталога")
+                    continue
+                if os.path.isdir(f_name):
+                    errors.append(f"{f_name}: Это каталог")
+                    continue
+                
+                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
+                    content = file.read()
+                    if content: output_content.append(content)
+                    else: output_content.append(f"--- (Файл {f_name} пуст) ---")
+            except Exception as e:
+                errors.append(f"{f_name}: {str(e)}")
+
+        final_text = "".join(output_content)
+        if errors:
+            if final_text: final_text += "\n\n"
+            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
+
+        if not final_text.strip():
+            print_out("Файл пуст или не найден.")
+            return
+
+        # Создаем отдельное окно (диалог) для less
+        dialog = QDialog(parent_window)
+        dialog.setWindowTitle(f"less: {filename}")
+        dialog.resize(800, 600)  # Размер окна
+
+        layout = QVBoxLayout(dialog)
+
+        # Текстовое поле (только для чтения, с прокруткой)
+        text_area = QPlainTextEdit(dialog)
+        text_area.setPlainText(final_text)
+        text_area.setReadOnly(True)
+        text_area.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Courier New', Consolas, monospace;
+                font-size: 14px;
+                border: none;
+            }
+        """)
+
+        btn_close = QPushButton("Закрыть", dialog)
+        btn_close.clicked.connect(dialog.accept)
+
+        layout.addWidget(text_area)
+        layout.addWidget(btn_close)
+
+        # Выводим подтверждение в основную консоль
+        print_out(f"Открыт просмотр файла: {filename} (нажмите 'Закрыть' для выхода)")
+        
+        # Открываем окно (блокирует основной интерфейс до закрытия)
+        dialog.exec()
 
     def handle_pushd(self, parent_window, callback_update_label, print_out):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
@@ -344,7 +410,6 @@ class TerminalCommands:
                 if not result.strip():
                     print_out("Файлы не найдены.")
                 else:
-                    # Ограничение по строкам убрано
                     print_out(result)
             except subprocess.CalledProcessError as e:
                 print_out(f"Ошибка find:\n{e.output}")
@@ -358,7 +423,6 @@ class TerminalCommands:
                 if not result.strip():
                     print_out("Ничего не найдено в базе данных системы.")
                 else:
-                    # Ограничение по строкам убрано
                     print_out(result)
             except subprocess.CalledProcessError:
                 print_out("Предупреждение locate: Ничего не найдено или утилита locate не установлена.")
