@@ -177,10 +177,9 @@ class MainAppWindow(QWidget):
         sub_button_layout_proc.setContentsMargins(0, 0, 0, 0)
         
         btn_ps = QPushButton("ps (Список процессов)", parent=sub_widget_proc)
-        btn_top = QPushButton("top (Мониторинг процессов)", parent=sub_widget_proc) # Новая кнопка
         btn_back_proc = QPushButton("Назад", parent=sub_widget_proc)
         
-        buttons_sub_proc = [btn_ps, btn_top, btn_back_proc] # Добавили btn_top
+        buttons_sub_proc = [btn_ps, btn_back_proc]
         for btn in buttons_sub_proc:
             btn.setFixedWidth(350)
             btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
@@ -251,7 +250,6 @@ class MainAppWindow(QWidget):
 
         # --- Процессы ---
         btn_ps.clicked.connect(lambda: self.run_command("ps", self.cmd_logic.handle_ps, self, self.print_to_console))
-        btn_top.clicked.connect(lambda: self.run_command("top", self.cmd_logic.handle_top, self, self.print_to_console)) # Привязка top
         btn_back_proc.clicked.connect(self.show_main_screen)
 
         # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================

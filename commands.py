@@ -5,7 +5,6 @@ import stat
 import subprocess
 from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
                              QVBoxLayout, QPlainTextEdit, QPushButton)
-from PyQt6.QtCore import QTimer  # Добавлен для работы таймера top
 
 class TerminalCommands:
     def __init__(self):
@@ -90,16 +89,17 @@ class TerminalCommands:
         return new_mode
 
     def handle_cd(self, parent_window, callback_update_label, print_out):
-        text, ok = QInputDialog.getText(parent_window, "Смена директории", "Введите новый путь к директории:")
+        text, ok = QInputDialog.getText(parent_window, "Смена директории", "Введите новый путь к директории (можно использовать ~):")
         if ok and text.strip():
-            path_to_check = text.strip()
-            if os.path.isdir(path_to_check):
+            expanded_path = os.path.expanduser(text.strip())
+            
+            if os.path.isdir(expanded_path):
                 self.previous_working_dir = os.getcwd()
-                os.chdir(path_to_check)
+                os.chdir(expanded_path)
                 callback_update_label(os.getcwd())
                 print_out(f"Переход в директорию: {os.getcwd()}")
             else:
-                print_out(f"cd: {path_to_check}: Нет такого файла или каталога")
+                print_out(f"cd: {text.strip()}: Нет такого файла или каталога")
 
     def handle_ls(self, parent_window, print_out):
         keys, ok = QInputDialog.getText(parent_window, "Параметры ls", "Введите ключи терминала (например: -l, -a, -la) или оставьте пустым:")
@@ -130,6 +130,7 @@ class TerminalCommands:
 
             for file_name in file_list:
                 try:
+                    file_name = os.path.expanduser(file_name)
                     if os.path.exists(file_name):
                         os.utime(file_name, None)
                         updated_files.append(file_name)
@@ -156,6 +157,7 @@ class TerminalCommands:
 
             for d_name in dir_list:
                 try:
+                    d_name = os.path.expanduser(d_name)
                     if os.path.exists(d_name):
                         exist_dirs.append(d_name)
                     else:
@@ -175,8 +177,8 @@ class TerminalCommands:
         dest, ok = QInputDialog.getText(parent_window, "Команда cp", "Введите назначение (файл или директорию):")
         if not (ok and dest.strip()): return
 
-        source_list = self._parse_input_to_list(source)
-        dest = dest.strip()
+        source_list = [os.path.expanduser(s) for s in self._parse_input_to_list(source)]
+        dest = os.path.expanduser(dest.strip())
 
         dirs_in_sources = [s for s in source_list if os.path.isdir(s)]
         recursive = False
@@ -227,8 +229,8 @@ class TerminalCommands:
         dest, ok = QInputDialog.getText(parent_window, "Команда mv", "Введите назначение (новое имя или существующую директорию):")
         if not (ok and dest.strip()): return
 
-        source_list = self._parse_input_to_list(source)
-        dest = dest.strip()
+        source_list = [os.path.expanduser(s) for s in self._parse_input_to_list(source)]
+        dest = os.path.expanduser(dest.strip())
 
         moved, failed = [], []
         multiple = len(source_list) > 1
@@ -262,7 +264,7 @@ class TerminalCommands:
         target, ok = QInputDialog.getText(parent_window, "Команда rm", "Введите имя файла/директории для удаления или {}:")
         if not (ok and target.strip()): return
 
-        target_list = self._parse_input_to_list(target)
+        target_list = [os.path.expanduser(t) for t in self._parse_input_to_list(target)]
 
         dirs_in_targets = [t for t in target_list if os.path.isdir(t)]
         recursive = False
@@ -311,7 +313,7 @@ class TerminalCommands:
         filename, ok = QInputDialog.getText(parent_window, "Команда cat", "Введите имена файлов для просмотра:")
         if not (ok and filename.strip()): return
 
-        file_list = self._parse_input_to_list(filename)
+        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
         output_content, errors = [], []
 
         for f_name in file_list:
@@ -342,7 +344,7 @@ class TerminalCommands:
         filename, ok = QInputDialog.getText(parent_window, "Команда less", "Введите имя файла для просмотра (или {}):")
         if not (ok and filename.strip()): return
 
-        file_list = self._parse_input_to_list(filename)
+        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
         output_content, errors = [], []
 
         for f_name in file_list:
@@ -411,7 +413,7 @@ class TerminalCommands:
         except ValueError:
             num_lines = 10
 
-        file_list = self._parse_input_to_list(filename)
+        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
         output_parts, errors = [], []
         multiple_files = len(file_list) > 1
 
@@ -458,7 +460,7 @@ class TerminalCommands:
         except ValueError:
             num_lines = 10
 
-        file_list = self._parse_input_to_list(filename)
+        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
         output_parts, errors = [], []
         multiple_files = len(file_list) > 1
 
@@ -497,7 +499,7 @@ class TerminalCommands:
         filename, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите имена файлов для поиска (или {}):")
         if not (ok and filename.strip()): return
 
-        file_list = self._parse_input_to_list(filename)
+        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
         output_lines, errors = [], []
         multiple_files = len(file_list) > 1
         found_any = False
@@ -553,7 +555,7 @@ class TerminalCommands:
         )
         if not (ok and target.strip()): return
 
-        target_list = self._parse_input_to_list(target)
+        target_list = [os.path.expanduser(t) for t in self._parse_input_to_list(target)]
         success_count = 0
         errors = []
 
@@ -579,13 +581,15 @@ class TerminalCommands:
             print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
 
     def handle_ps(self, parent_window, print_out):
+        """Вывод списка процессов (аналог ps)"""
         args, ok = QInputDialog.getText(
             parent_window, 
             "Команда ps", 
             "Введите ключи команды ps (например: aux, -ef)\n"
             "или оставьте пустым для стандартного вывода:"
         )
-        if not ok: return
+        if not ok:
+            return
 
         command = ["ps"]
         if args.strip():
@@ -601,70 +605,20 @@ class TerminalCommands:
         except Exception as e:
             print_out(f"Критическая ошибка ps:\n{str(e)}")
 
-    def handle_top(self, parent_window, print_out):
-        """Интерактивный мониторинг процессов (аналог top)"""
-        dialog = QDialog(parent_window)
-        dialog.setWindowTitle("top - Динамический мониторинг процессов")
-        dialog.resize(900, 700)
-
-        layout = QVBoxLayout(dialog)
-
-        text_area = QPlainTextEdit(dialog)
-        text_area.setReadOnly(True)
-        text_area.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: 'Courier New', Consolas, monospace;
-                font-size: 12px;
-                border: none;
-            }
-        """)
-
-        btn_close = QPushButton("Закрыть", dialog)
-        btn_close.clicked.connect(dialog.accept)
-
-        layout.addWidget(text_area)
-        layout.addWidget(btn_close)
-
-        def update_top():
-            try:
-                # -b (batch mode) и -n 1 (одна итерация) нужны для получения снимка экрана
-                result = subprocess.check_output(["top", "-b", "-n", "1"], text=True, stderr=subprocess.STDOUT)
-                text_area.setPlainText(result)
-            except FileNotFoundError:
-                text_area.setPlainText("Ошибка: Утилита 'top' не найдена в вашей системе.")
-            except Exception as e:
-                text_area.setPlainText(f"Ошибка выполнения top:\n{str(e)}")
-
-        # Таймер для обновления каждые 2 секунды
-        timer = QTimer(dialog)
-        timer.timeout.connect(update_top)
-        timer.start(2000)
-        
-        # Первый вызов сразу при открытии
-        update_top()
-
-        print_out("Открыт монитор top (Обновление каждые 2 секунды)")
-        
-        dialog.exec()
-        
-        # Останавливаем таймер при закрытии окна
-        timer.stop()
-
     def handle_pushd(self, parent_window, callback_update_label, print_out):
-        text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
+        text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода (можно использовать ~):")
         if ok and text.strip():
-            path_to_check = text.strip()
-            if os.path.isdir(path_to_check):
+            expanded_path = os.path.expanduser(text.strip())
+            
+            if os.path.isdir(expanded_path):
                 self.previous_working_dir = os.getcwd()
                 self.dir_stack.append(os.getcwd())
-                os.chdir(path_to_check)
+                os.chdir(expanded_path)
                 callback_update_label(os.getcwd())
                 current_stack_str = " -> ".join([os.getcwd()] + self.dir_stack[::-1])
                 print_out(f"Директория добавлена в стек.\nТекущий стек:\n{current_stack_str}")
             else:
-                print_out(f"pushd: {path_to_check}: Нет такого файла или каталога")
+                print_out(f"pushd: {text.strip()}: Нет такого файла или каталога")
 
     def handle_popd(self, parent_window, callback_update_label, print_out):
         if self.dir_stack:
