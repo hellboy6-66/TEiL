@@ -400,6 +400,102 @@ class TerminalCommands:
         if not final_text.strip(): final_text = "(Нет вывода)"
         print_out(final_text)
 
+    def handle_tail(self, parent_window, print_out):
+        """Вывод последних N строк файла (аналог tail)"""
+        filename, ok = QInputDialog.getText(parent_window, "Команда tail", "Введите имена файлов для просмотра (или {}):")
+        if not (ok and filename.strip()): return
+
+        lines_str, ok = QInputDialog.getText(parent_window, "Команда tail", "Сколько последних строк вывести? (оставьте пустым для 10):")
+        if not ok: return
+        
+        try:
+            num_lines = int(lines_str.strip()) if lines_str.strip() else 10
+            if num_lines < 1: num_lines = 10
+        except ValueError:
+            num_lines = 10
+
+        file_list = self._parse_input_to_list(filename)
+        output_parts, errors = [], []
+        multiple_files = len(file_list) > 1
+
+        for f_name in file_list:
+            try:
+                if not os.path.exists(f_name):
+                    errors.append(f"{f_name}: Нет такого файла или каталога")
+                    continue
+                if os.path.isdir(f_name):
+                    errors.append(f"{f_name}: Это каталог")
+                    continue
+                
+                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
+                    lines = file.readlines()
+                    content = "".join(lines[-num_lines:])
+                    
+                    if multiple_files:
+                        output_parts.append(f"==> {f_name} <==\n{content}")
+                    else:
+                        output_parts.append(content)
+            except Exception as e:
+                errors.append(f"{f_name}: {str(e)}")
+
+        final_text = "\n".join(output_parts)
+        if errors:
+            if final_text: final_text += "\n\n"
+            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
+
+        if not final_text.strip(): final_text = "(Нет вывода)"
+        print_out(final_text)
+
+    def handle_grep(self, parent_window, print_out):
+        """Поиск строк по шаблону в файлах (аналог grep)"""
+        pattern, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите строку или регулярное выражение для поиска:")
+        if not (ok and pattern.strip()): return
+
+        filename, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите имена файлов для поиска (или {}):")
+        if not (ok and filename.strip()): return
+
+        file_list = self._parse_input_to_list(filename)
+        output_lines, errors = [], []
+        multiple_files = len(file_list) > 1
+        found_any = False
+
+        try:
+            # Компилируем регулярное выражение (игнорируя регистр, как grep -i по желанию, 
+            # но пока сделаем стандартный регистрозависимый поиск)
+            regex = re.compile(pattern)
+        except re.error as e:
+            print_out(f"grep: Ошибка в регулярном выражении: {str(e)}")
+            return
+
+        for f_name in file_list:
+            try:
+                if not os.path.exists(f_name):
+                    errors.append(f"{f_name}: Нет такого файла или каталога")
+                    continue
+                if os.path.isdir(f_name):
+                    errors.append(f"{f_name}: Это каталог")
+                    continue
+                
+                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
+                    for line_num, line in enumerate(file, 1):
+                        if regex.search(line):
+                            found_any = True
+                            line_clean = line.rstrip('\n')
+                            if multiple_files:
+                                output_lines.append(f"{f_name}:{line_clean}")
+                            else:
+                                output_lines.append(line_clean)
+            except Exception as e:
+                errors.append(f"{f_name}: {str(e)}")
+
+        if not found_any:
+            print_out("Совпадений не найдено.")
+        else:
+            print_out("\n".join(output_lines))
+            
+        if errors:
+            print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
+
     def handle_pushd(self, parent_window, callback_update_label, print_out):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
         if ok and text.strip():
