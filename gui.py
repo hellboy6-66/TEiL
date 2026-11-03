@@ -136,10 +136,10 @@ class MainAppWindow(QWidget):
         btn_less = QPushButton("less (Постраничный просмотр)", parent=sub_widget_text)
         btn_head = QPushButton("head (Вывод первых N строк)", parent=sub_widget_text)
         btn_tail = QPushButton("tail (Вывод последних N строк)", parent=sub_widget_text)
-        btn_grep = QPushButton("grep (Поиск строк в файле)", parent=sub_widget_text) # Новая кнопка
+        btn_grep = QPushButton("grep (Поиск строк в файле)", parent=sub_widget_text)
         btn_back_text = QPushButton("Назад", parent=sub_widget_text)
         
-        buttons_sub_text = [btn_cat, btn_less, btn_head, btn_tail, btn_grep, btn_back_text] # Добавили btn_grep
+        buttons_sub_text = [btn_cat, btn_less, btn_head, btn_tail, btn_grep, btn_back_text]
         for btn in buttons_sub_text:
             btn.setFixedWidth(350)
             btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
@@ -151,11 +151,32 @@ class MainAppWindow(QWidget):
         sub_menu_layout_text.addLayout(sub_button_layout_text)
         sub_widget_text.setLayout(sub_menu_layout_text)
 
+        # --- ЭКРАН 4: Подменю "Права доступа и владельцы" ---
+        sub_widget_perms = QWidget(parent=self)
+        sub_button_layout_perms = QVBoxLayout()
+        sub_button_layout_perms.setContentsMargins(0, 0, 0, 0)
+        
+        btn_chmod = QPushButton("chmod (Изменить права доступа)", parent=sub_widget_perms)
+        btn_back_perms = QPushButton("Назад", parent=sub_widget_perms)
+        
+        buttons_sub_perms = [btn_chmod, btn_back_perms]
+        for btn in buttons_sub_perms:
+            btn.setFixedWidth(350)
+            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
+            sub_button_layout_perms.addWidget(btn)
+        sub_button_layout_perms.addStretch()
+        
+        sub_menu_layout_perms = QHBoxLayout()
+        sub_menu_layout_perms.setContentsMargins(0, 0, 0, 0)
+        sub_menu_layout_perms.addLayout(sub_button_layout_perms)
+        sub_widget_perms.setLayout(sub_menu_layout_perms)
+
         # Добавляем экраны в стек
         self.right_stacked_layout.addWidget(menu_widget)       # Индекс 0
         self.right_stacked_layout.addWidget(sub_widget_nav)    # Индекс 1
         self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
         self.right_stacked_layout.addWidget(sub_widget_text)   # Индекс 3
+        self.right_stacked_layout.addWidget(sub_widget_perms)  # Индекс 4
 
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -165,9 +186,9 @@ class MainAppWindow(QWidget):
         btn_nav.clicked.connect(self.show_nav_sub_screen)
         btn_files.clicked.connect(self.show_files_sub_screen) 
         btn_text.clicked.connect(self.show_text_sub_screen)
+        btn_perms.clicked.connect(self.show_perms_sub_screen) # Привязка экрана прав
         
         in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
-        btn_perms.clicked.connect(in_dev)
         btn_proc.clicked.connect(in_dev)
         btn_sys.clicked.connect(in_dev)
         btn_users.clicked.connect(in_dev)
@@ -199,8 +220,12 @@ class MainAppWindow(QWidget):
         btn_less.clicked.connect(lambda: self.run_command("less", self.cmd_logic.handle_less, self, self.print_to_console))
         btn_head.clicked.connect(lambda: self.run_command("head", self.cmd_logic.handle_head, self, self.print_to_console))
         btn_tail.clicked.connect(lambda: self.run_command("tail", self.cmd_logic.handle_tail, self, self.print_to_console))
-        btn_grep.clicked.connect(lambda: self.run_command("grep", self.cmd_logic.handle_grep, self, self.print_to_console)) # Привязка grep
+        btn_grep.clicked.connect(lambda: self.run_command("grep", self.cmd_logic.handle_grep, self, self.print_to_console))
         btn_back_text.clicked.connect(self.show_main_screen)
+
+        # --- Права доступа ---
+        btn_chmod.clicked.connect(lambda: self.run_command("chmod", self.cmd_logic.handle_chmod, self, self.print_to_console))
+        btn_back_perms.clicked.connect(self.show_main_screen)
 
         # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================
         main_layout = QHBoxLayout(self)
@@ -230,6 +255,9 @@ class MainAppWindow(QWidget):
 
     def show_text_sub_screen(self):
         self.right_stacked_layout.setCurrentIndex(3)
+
+    def show_perms_sub_screen(self):
+        self.right_stacked_layout.setCurrentIndex(4)
 
     def show_main_screen(self):
         self.right_stacked_layout.setCurrentIndex(0)  

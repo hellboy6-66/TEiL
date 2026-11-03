@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import stat  # Добавлен для работы с правами доступа
 import subprocess
 from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
                              QVBoxLayout, QPlainTextEdit, QPushButton)
@@ -42,6 +43,55 @@ class TerminalCommands:
         for part in raw_input.strip().split():
             final_list.extend(self._expand_braces(part))
         return final_list
+
+    def _calculate_new_mode(self, current_mode, mode_str):
+        """Вычисляет новые права доступа на основе символьной или числовой записи"""
+        # Если введены только цифры (например, 755)
+        if mode_str.isdigit() and len(mode_str) in (3, 4):
+            return int(mode_str, 8)
+
+        new_mode = stat.S_IMODE(current_mode)
+        
+        # Разбиваем на блоки (например: u+x,g-w)
+        for clause in mode_str.split(','):
+            clause = clause.strip()
+            if not clause:
+                continue
+                
+            # Регулярное выражение: (кто)(оператор)(права)
+            match = re.match(r'^([ugoa]*)([+\-=])([rwx]+)$', clause)
+            if not match:
+                raise ValueError(f"Неверный формат прав: {clause}")
+                
+            who_str, op, perms = match.groups()
+            if not who_str or 'a' in who_str:
+                who_str = 'ugo'
+                
+            perm_val = 0
+            if 'r' in perms: perm_val |= 4
+            if 'w' in perms: perm_val |= 2
+            if 'x' in perms: perm_val |= 1
+            
+            # Сдвиги: u=6, g=3, o=0
+            shifts = {'u': 6, 'g': 3, 'o': 0}
+            
+            for who in who_str:
+                if who not in shifts:
+                    continue
+                shift = shifts[who]
+                mask = perm_val << shift
+                
+                if op == '+':
+                    new_mode |= mask
+                elif op == '-':
+                    new_mode &= ~mask
+                elif op == '=':
+                    # Очищаем текущие права для этой категории и ставим новые
+                    clear_mask = 7 << shift
+                    new_mode &= ~clear_mask
+                    new_mode |= mask
+                    
+        return new_mode
 
     def handle_cd(self, parent_window, callback_update_label, print_out):
         text, ok = QInputDialog.getText(parent_window, "Смена директории", "Введите новый путь к директории:")
@@ -353,7 +403,6 @@ class TerminalCommands:
         dialog.exec()
 
     def handle_head(self, parent_window, print_out):
-        """Вывод первых N строк файла (аналог head)"""
         filename, ok = QInputDialog.getText(parent_window, "Команда head", "Введите имена файлов для просмотра (или {}):")
         if not (ok and filename.strip()): return
 
@@ -401,7 +450,6 @@ class TerminalCommands:
         print_out(final_text)
 
     def handle_tail(self, parent_window, print_out):
-        """Вывод последних N строк файла (аналог tail)"""
         filename, ok = QInputDialog.getText(parent_window, "Команда tail", "Введите имена файлов для просмотра (или {}):")
         if not (ok and filename.strip()): return
 
@@ -447,7 +495,6 @@ class TerminalCommands:
         print_out(final_text)
 
     def handle_grep(self, parent_window, print_out):
-        """Поиск строк по шаблону в файлах (аналог grep)"""
         pattern, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите строку или регулярное выражение для поиска:")
         if not (ok and pattern.strip()): return
 
@@ -460,8 +507,6 @@ class TerminalCommands:
         found_any = False
 
         try:
-            # Компилируем регулярное выражение (игнорируя регистр, как grep -i по желанию, 
-            # но пока сделаем стандартный регистрозависимый поиск)
             regex = re.compile(pattern)
         except re.error as e:
             print_out(f"grep: Ошибка в регулярном выражении: {str(e)}")
@@ -493,6 +538,48 @@ class TerminalCommands:
         else:
             print_out("\n".join(output_lines))
             
+        if errors:
+            print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
+
+    def handle_chmod(self, parent_window, print_out):
+        """Изменение прав доступа (аналог chmod)"""
+        mode_str, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда chmod", 
+            "Введите права доступа\n"
+            "(например: u+x, go-w, a=rw, 755):"
+        )
+        if not (ok and mode_str.strip()): return
+
+        target, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда chmod", 
+            "Введите имена файлов/директорий для изменения прав (или {}):"
+        )
+        if not (ok and target.strip()): return
+
+        target_list = self._parse_input_to_list(target)
+        success_count = 0
+        errors = []
+
+        for t in target_list:
+            try:
+                if not os.path.exists(t):
+                    errors.append(f"{t}: Нет такого файла или каталога")
+                    continue
+                
+                current_mode = os.stat(t).st_mode
+                new_mode = self._calculate_new_mode(current_mode, mode_str.strip())
+                os.chmod(t, new_mode)
+                success_count += 1
+            except ValueError as ve:
+                print_out(f"Ошибка синтаксиса chmod: {str(ve)}")
+                return
+            except Exception as e:
+                errors.append(f"{t}: {str(e)}")
+
+        if success_count > 0:
+            print_out(f"Успешно изменены права для {success_count} объекта(ов).")
         if errors:
             print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
 
