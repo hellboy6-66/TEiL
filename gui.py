@@ -171,12 +171,34 @@ class MainAppWindow(QWidget):
         sub_menu_layout_perms.addLayout(sub_button_layout_perms)
         sub_widget_perms.setLayout(sub_menu_layout_perms)
 
+        # --- ЭКРАН 5: Подменю "Управление процессами" ---
+        sub_widget_proc = QWidget(parent=self)
+        sub_button_layout_proc = QVBoxLayout()
+        sub_button_layout_proc.setContentsMargins(0, 0, 0, 0)
+        
+        btn_ps = QPushButton("ps (Список процессов)", parent=sub_widget_proc)
+        btn_top = QPushButton("top (Мониторинг процессов)", parent=sub_widget_proc) # Новая кнопка
+        btn_back_proc = QPushButton("Назад", parent=sub_widget_proc)
+        
+        buttons_sub_proc = [btn_ps, btn_top, btn_back_proc] # Добавили btn_top
+        for btn in buttons_sub_proc:
+            btn.setFixedWidth(350)
+            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
+            sub_button_layout_proc.addWidget(btn)
+        sub_button_layout_proc.addStretch()
+        
+        sub_menu_layout_proc = QHBoxLayout()
+        sub_menu_layout_proc.setContentsMargins(0, 0, 0, 0)
+        sub_menu_layout_proc.addLayout(sub_button_layout_proc)
+        sub_widget_proc.setLayout(sub_menu_layout_proc)
+
         # Добавляем экраны в стек
         self.right_stacked_layout.addWidget(menu_widget)       # Индекс 0
         self.right_stacked_layout.addWidget(sub_widget_nav)    # Индекс 1
         self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
         self.right_stacked_layout.addWidget(sub_widget_text)   # Индекс 3
         self.right_stacked_layout.addWidget(sub_widget_perms)  # Индекс 4
+        self.right_stacked_layout.addWidget(sub_widget_proc)   # Индекс 5
 
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -186,10 +208,10 @@ class MainAppWindow(QWidget):
         btn_nav.clicked.connect(self.show_nav_sub_screen)
         btn_files.clicked.connect(self.show_files_sub_screen) 
         btn_text.clicked.connect(self.show_text_sub_screen)
-        btn_perms.clicked.connect(self.show_perms_sub_screen) # Привязка экрана прав
+        btn_perms.clicked.connect(self.show_perms_sub_screen)
+        btn_proc.clicked.connect(self.show_proc_sub_screen)
         
         in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
-        btn_proc.clicked.connect(in_dev)
         btn_sys.clicked.connect(in_dev)
         btn_users.clicked.connect(in_dev)
         btn_pkg.clicked.connect(in_dev)
@@ -227,6 +249,11 @@ class MainAppWindow(QWidget):
         btn_chmod.clicked.connect(lambda: self.run_command("chmod", self.cmd_logic.handle_chmod, self, self.print_to_console))
         btn_back_perms.clicked.connect(self.show_main_screen)
 
+        # --- Процессы ---
+        btn_ps.clicked.connect(lambda: self.run_command("ps", self.cmd_logic.handle_ps, self, self.print_to_console))
+        btn_top.clicked.connect(lambda: self.run_command("top", self.cmd_logic.handle_top, self, self.print_to_console)) # Привязка top
+        btn_back_proc.clicked.connect(self.show_main_screen)
+
         # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(15, 15, 15, 15)
@@ -258,6 +285,9 @@ class MainAppWindow(QWidget):
 
     def show_perms_sub_screen(self):
         self.right_stacked_layout.setCurrentIndex(4)
+
+    def show_proc_sub_screen(self):
+        self.right_stacked_layout.setCurrentIndex(5)
 
     def show_main_screen(self):
         self.right_stacked_layout.setCurrentIndex(0)  

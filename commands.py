@@ -1,10 +1,11 @@
 import os
 import re
 import shutil
-import stat  # Добавлен для работы с правами доступа
+import stat
 import subprocess
 from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
                              QVBoxLayout, QPlainTextEdit, QPushButton)
+from PyQt6.QtCore import QTimer  # Добавлен для работы таймера top
 
 class TerminalCommands:
     def __init__(self):
@@ -46,19 +47,16 @@ class TerminalCommands:
 
     def _calculate_new_mode(self, current_mode, mode_str):
         """Вычисляет новые права доступа на основе символьной или числовой записи"""
-        # Если введены только цифры (например, 755)
         if mode_str.isdigit() and len(mode_str) in (3, 4):
             return int(mode_str, 8)
 
         new_mode = stat.S_IMODE(current_mode)
         
-        # Разбиваем на блоки (например: u+x,g-w)
         for clause in mode_str.split(','):
             clause = clause.strip()
             if not clause:
                 continue
                 
-            # Регулярное выражение: (кто)(оператор)(права)
             match = re.match(r'^([ugoa]*)([+\-=])([rwx]+)$', clause)
             if not match:
                 raise ValueError(f"Неверный формат прав: {clause}")
@@ -72,7 +70,6 @@ class TerminalCommands:
             if 'w' in perms: perm_val |= 2
             if 'x' in perms: perm_val |= 1
             
-            # Сдвиги: u=6, g=3, o=0
             shifts = {'u': 6, 'g': 3, 'o': 0}
             
             for who in who_str:
@@ -86,7 +83,6 @@ class TerminalCommands:
                 elif op == '-':
                     new_mode &= ~mask
                 elif op == '=':
-                    # Очищаем текущие права для этой категории и ставим новые
                     clear_mask = 7 << shift
                     new_mode &= ~clear_mask
                     new_mode |= mask
@@ -542,7 +538,6 @@ class TerminalCommands:
             print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
 
     def handle_chmod(self, parent_window, print_out):
-        """Изменение прав доступа (аналог chmod)"""
         mode_str, ok = QInputDialog.getText(
             parent_window, 
             "Команда chmod", 
@@ -582,6 +577,80 @@ class TerminalCommands:
             print_out(f"Успешно изменены права для {success_count} объекта(ов).")
         if errors:
             print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
+
+    def handle_ps(self, parent_window, print_out):
+        args, ok = QInputDialog.getText(
+            parent_window, 
+            "Команда ps", 
+            "Введите ключи команды ps (например: aux, -ef)\n"
+            "или оставьте пустым для стандартного вывода:"
+        )
+        if not ok: return
+
+        command = ["ps"]
+        if args.strip():
+            command.extend(args.strip().split())
+
+        try:
+            result = subprocess.check_output(command, text=True, stderr=subprocess.STDOUT)
+            if not result.strip():
+                result = "(Список процессов пуст)"
+            print_out(result)
+        except subprocess.CalledProcessError as e:
+            print_out(f"Ошибка выполнения ps:\n{e.output}")
+        except Exception as e:
+            print_out(f"Критическая ошибка ps:\n{str(e)}")
+
+    def handle_top(self, parent_window, print_out):
+        """Интерактивный мониторинг процессов (аналог top)"""
+        dialog = QDialog(parent_window)
+        dialog.setWindowTitle("top - Динамический мониторинг процессов")
+        dialog.resize(900, 700)
+
+        layout = QVBoxLayout(dialog)
+
+        text_area = QPlainTextEdit(dialog)
+        text_area.setReadOnly(True)
+        text_area.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Courier New', Consolas, monospace;
+                font-size: 12px;
+                border: none;
+            }
+        """)
+
+        btn_close = QPushButton("Закрыть", dialog)
+        btn_close.clicked.connect(dialog.accept)
+
+        layout.addWidget(text_area)
+        layout.addWidget(btn_close)
+
+        def update_top():
+            try:
+                # -b (batch mode) и -n 1 (одна итерация) нужны для получения снимка экрана
+                result = subprocess.check_output(["top", "-b", "-n", "1"], text=True, stderr=subprocess.STDOUT)
+                text_area.setPlainText(result)
+            except FileNotFoundError:
+                text_area.setPlainText("Ошибка: Утилита 'top' не найдена в вашей системе.")
+            except Exception as e:
+                text_area.setPlainText(f"Ошибка выполнения top:\n{str(e)}")
+
+        # Таймер для обновления каждые 2 секунды
+        timer = QTimer(dialog)
+        timer.timeout.connect(update_top)
+        timer.start(2000)
+        
+        # Первый вызов сразу при открытии
+        update_top()
+
+        print_out("Открыт монитор top (Обновление каждые 2 секунды)")
+        
+        dialog.exec()
+        
+        # Останавливаем таймер при закрытии окна
+        timer.stop()
 
     def handle_pushd(self, parent_window, callback_update_label, print_out):
         text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода:")
