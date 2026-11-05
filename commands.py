@@ -1,677 +1,181 @@
+"""
+Каталог команд TEiL и исполнитель безопасных команд.
+
+Каждая команда описана словарём:
+    name             — имя (без флагов)
+    desc             — подсказка
+    flags            — список галочек; однобуквенные (-a, -l, …)
+                       склеиваются в один флаг вроде -al,
+                       многословные (aux, -c 2, -h now) — отдельно
+    arg_placeholder  — подсказка для поля аргумента
+    instant          — если True, выполняется без диалога
+    dangerous        — если True, реально НЕ выполняется
+    sim              — lambda(cmd) -> str, текст «вывода» для опасных
+"""
+
 import os
-import re
-import shutil
-import stat
 import subprocess
-from PyQt6.QtWidgets import (QInputDialog, QMessageBox, QDialog, 
-                             QVBoxLayout, QPlainTextEdit, QPushButton)
 
-class TerminalCommands:
-    def __init__(self):
-        self.dir_stack = []
-        self.previous_working_dir = None
 
-    def _expand_braces(self, text):
-        """Внутренняя функция парсинга фигурных скобок (Brace Expansion)"""
-        match = re.search(r'\{([^}]+)\}', text)
-        if not match:
-            return [text]
-        
-        prefix = text[:match.start()]
-        suffix = text[match.end():]
-        body = match.group(1)
-        
-        expanded = []
-        if '..' in body:
-            parts = body.split('..')
-            if len(parts) == 2:
-                start, end = parts[0], parts[1]
-                if start.isdigit() and end.isdigit():
-                    for i in range(int(start), int(end) + 1):
-                        expanded.extend(self._expand_braces(f"{prefix}{i}{suffix}"))
-                elif len(start) == 1 and len(end) == 1:
-                    for ord_char in range(ord(start), ord(end) + 1):
-                        expanded.extend(self._expand_braces(f"{prefix}{chr(ord_char)}{suffix}"))
-        else:
-            items = body.split(',')
-            for item in items:
-                expanded.extend(self._expand_braces(f"{prefix}{item.strip()}{suffix}"))
-        return expanded
+CATEGORIES = {
+    "Основные": [
+        {"name": "pwd",      "desc": "Показать текущую директорию", "instant": True},
+        {"name": "whoami",   "desc": "Имя текущего пользователя",   "instant": True},
+        {"name": "date",     "desc": "Текущая дата и время",        "instant": True},
+        {"name": "hostname", "desc": "Имя хоста",
+         "flags": ["-f", "-I"]},
+        {"name": "echo",     "desc": "Вывести строку",
+         "arg_placeholder": "текст"},
+    ],
 
-    def _parse_input_to_list(self, raw_input):
-        final_list = []
-        for part in raw_input.strip().split():
-            final_list.extend(self._expand_braces(part))
-        return final_list
+    "Файлы и папки": [
+        {"name": "ls", "desc": "Список файлов",
+         "flags": ["-l", "-a", "-h"],
+         "arg_placeholder": "путь (необязательно)"},
+        {"name": "cd", "desc": "Сменить директорию",
+         "arg_placeholder": "путь (например /tmp)"},
+        {"name": "df", "desc": "Свободное место на дисках",
+         "flags": ["-h", "-T"]},
+        {"name": "du", "desc": "Размер директории",
+         "flags": ["-s", "-h"],
+         "arg_placeholder": "путь"},
+        {"name": "find", "desc": "Поиск файлов",
+         "arg_placeholder": ". -maxdepth 1 -type f"},
+        {"name": "cat", "desc": "Содержимое файла",
+         "arg_placeholder": "файл (например /etc/os-release)"},
+    ],
 
-    def _calculate_new_mode(self, current_mode, mode_str):
-        """Вычисляет новые права доступа на основе символьной или числовой записи"""
-        if mode_str.isdigit() and len(mode_str) in (3, 4):
-            return int(mode_str, 8)
+    "Сеть": [
+        {"name": "ip", "desc": "Сетевые интерфейсы",
+         "arg_placeholder": "addr / route / link"},
+        {"name": "ping", "desc": "Проверка связи",
+         "flags": ["-c 2", "-c 4", "-c 10"],
+         "arg_placeholder": "хост (например 8.8.8.8)"},
+        {"name": "curl", "desc": "HTTP-запрос",
+         "flags": ["-s", "-I", "-L"],
+         "arg_placeholder": "URL"},
+    ],
 
-        new_mode = stat.S_IMODE(current_mode)
-        
-        for clause in mode_str.split(','):
-            clause = clause.strip()
-            if not clause:
-                continue
-                
-            match = re.match(r'^([ugoa]*)([+\-=])([rwx]+)$', clause)
-            if not match:
-                raise ValueError(f"Неверный формат прав: {clause}")
-                
-            who_str, op, perms = match.groups()
-            if not who_str or 'a' in who_str:
-                who_str = 'ugo'
-                
-            perm_val = 0
-            if 'r' in perms: perm_val |= 4
-            if 'w' in perms: perm_val |= 2
-            if 'x' in perms: perm_val |= 1
-            
-            shifts = {'u': 6, 'g': 3, 'o': 0}
-            
-            for who in who_str:
-                if who not in shifts:
-                    continue
-                shift = shifts[who]
-                mask = perm_val << shift
-                
-                if op == '+':
-                    new_mode |= mask
-                elif op == '-':
-                    new_mode &= ~mask
-                elif op == '=':
-                    clear_mask = 7 << shift
-                    new_mode &= ~clear_mask
-                    new_mode |= mask
-                    
-        return new_mode
+    "Процессы": [
+        {"name": "ps", "desc": "Список процессов",
+         "flags": ["aux", "-ef"]},
+        {"name": "uptime", "desc": "Время работы системы", "instant": True},
+        {"name": "free", "desc": "Использование памяти",
+         "flags": ["-h", "-m"]},
+        {"name": "top", "desc": "Снимок top",
+         "flags": ["-bn1"]},
+    ],
 
-    def handle_cd(self, parent_window, callback_update_label, print_out):
-        text, ok = QInputDialog.getText(parent_window, "Смена директории", "Введите новый путь к директории (можно использовать ~):")
-        if ok and text.strip():
-            expanded_path = os.path.expanduser(text.strip())
-            
-            if os.path.isdir(expanded_path):
-                self.previous_working_dir = os.getcwd()
-                os.chdir(expanded_path)
-                callback_update_label(os.getcwd())
-                print_out(f"Переход в директорию: {os.getcwd()}")
-            else:
-                print_out(f"cd: {text.strip()}: Нет такого файла или каталога")
+    "Система": [
+        {"name": "uname", "desc": "Информация о ядре",
+         "flags": ["-a", "-r", "-s"]},
+        {"name": "lscpu", "desc": "Информация о CPU", "instant": True},
+    ],
 
-    def handle_ls(self, parent_window, print_out):
-        keys, ok = QInputDialog.getText(parent_window, "Параметры ls", "Введите ключи терминала (например: -l, -a, -la) или оставьте пустым:")
-        if ok:
-            keys = keys.strip()
-            command = ["ls"]
-            if keys:
-                command.extend(keys.split())
-            try:
-                result = subprocess.check_output(command, cwd=os.getcwd(), text=True, stderr=subprocess.STDOUT)
-                if not result.strip():
-                    result = "(Директория пуста)"
-                print_out(result)
-            except subprocess.CalledProcessError as e:
-                print_out(f"Ошибка выполнения ls:\n{e.output}")
-            except Exception as e:
-                print_out(f"Критическая ошибка ls:\n{str(e)}")
+    "⚠ Опасные": [
+        {
+            "name": "rm", "desc": "Удаление файлов/каталогов",
+            "flags": ["-r", "-f"],
+            "arg_placeholder": "цель (например /)",
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "rm: рекурсивное удаление указанной цели\n"
+                "rm: удалено 138 402 файла\n"
+                "rm: освобождено 47.8 GB\n"
+                "[!] Команда заблокирована TEiL. Реальная система не пострадала."
+            ),
+        },
+        {
+            "name": "dd", "desc": "Запись на устройство",
+            "arg_placeholder": "if=/dev/zero of=/dev/sda",
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "1048576+0 записей получено\n"
+                "1048576+0 записей отправлено\n"
+                "5368709120 байт (5.4 GB) скопировано, 12.1 s, 443 MB/s\n"
+                "[!] Устройство было бы полностью уничтожено. TEiL заблокировал команду."
+            ),
+        },
+        {
+            "name": "mkfs.ext4", "desc": "Форматирование раздела",
+            "arg_placeholder": "устройство (например /dev/sda1)",
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "mke2fs 1.47.0\n"
+                "Создание файловой системы ext4 ...\n"
+                "Суперблок создан, inode-таблица создана.\n"
+                "[!] Раздел был бы отформатирован. Команда заблокирована TEiL."
+            ),
+        },
+        {
+            "name": ":(){ :|:& };:", "desc": "Fork-бомба",
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "bash: fork: retry: Resource temporarily unavailable\n"
+                "... (процесс продолжает плодить потомков)\n"
+                "[!] Система «зависла бы». TEiL заблокировал команду."
+            ),
+        },
+        {
+            "name": "chmod", "desc": "Изменение прав",
+            "flags": ["-R"],
+            "arg_placeholder": "права цель (например 000 /)",
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "chmod: изменение прав на 141 203 объекта...\n"
+                "[!] Команда заблокирована TEiL."
+            ),
+        },
+        {
+            "name": "shutdown", "desc": "Выключение/перезагрузка",
+            "flags": ["-h now", "-r now"],
+            "dangerous": True,
+            "sim": lambda cmd: (
+                f"[СИМУЛЯЦИЯ] {cmd}\n"
+                "Broadcast message: The system is going down NOW!\n"
+                "Stopping services... unmounting filesystems...\n"
+                "[!] Компьютер был бы выключен. TEiL заблокировал команду."
+            ),
+        },
+    ],
+}
 
-    def handle_touch(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(
-            parent_window, 
-            "Команда touch", 
-            "Введите имена файлов (поддерживаются скобки {}, например: file{1..3}.txt):"
-        )
-        if ok and filename.strip():
-            file_list = self._parse_input_to_list(filename)
-            created_files, updated_files, failed_files = [], [], []
 
-            for file_name in file_list:
-                try:
-                    file_name = os.path.expanduser(file_name)
-                    if os.path.exists(file_name):
-                        os.utime(file_name, None)
-                        updated_files.append(file_name)
-                    else:
-                        with open(file_name, 'a'):
-                            pass
-                        created_files.append(file_name)
-                except Exception as e:
-                    failed_files.append(f"{file_name} ({str(e)})")
+class CommandExecutor:
+    """Выполняет безопасные команды и следит за текущей директорией."""
 
-            if created_files: print_out(f"Создано файлов ({len(created_files)}):\n" + ", ".join(created_files))
-            if updated_files: print_out(f"Обновлено время ({len(updated_files)}):\n" + ", ".join(updated_files))
-            if failed_files: print_out(f"Ошибки ({len(failed_files)}):\n" + "\n".join(failed_files))
+    TIMEOUT = 10
 
-    def handle_mkdir(self, parent_window, print_out):
-        dirname, ok = QInputDialog.getText(
-            parent_window, 
-            "Команда mkdir", 
-            "Введите имена директорий (поддерживаются скобки {}):"
-        )
-        if ok and dirname.strip():
-            dir_list = self._parse_input_to_list(dirname)
-            created_dirs, exist_dirs, failed_dirs = [], [], []
+    def __init__(self, start_dir: str | None = None):
+        self.cwd = start_dir or os.path.expanduser("~")
 
-            for d_name in dir_list:
-                try:
-                    d_name = os.path.expanduser(d_name)
-                    if os.path.exists(d_name):
-                        exist_dirs.append(d_name)
-                    else:
-                        os.makedirs(d_name, exist_ok=True)
-                        created_dirs.append(d_name)
-                except Exception as e:
-                    failed_dirs.append(f"{d_name} ({str(e)})")
-
-            if created_dirs: print_out(f"Создано директорий ({len(created_dirs)}):\n" + ", ".join(created_dirs))
-            if exist_dirs: print_out(f"Уже существуют ({len(exist_dirs)}):\n" + ", ".join(exist_dirs))
-            if failed_dirs: print_out(f"Ошибки при создании ({len(failed_dirs)}):\n" + "\n".join(failed_dirs))
-
-    def handle_cp(self, parent_window, print_out):
-        source, ok = QInputDialog.getText(parent_window, "Команда cp", "Введите источник (файл/директорию) или {}:")
-        if not (ok and source.strip()): return
-
-        dest, ok = QInputDialog.getText(parent_window, "Команда cp", "Введите назначение (файл или директорию):")
-        if not (ok and dest.strip()): return
-
-        source_list = [os.path.expanduser(s) for s in self._parse_input_to_list(source)]
-        dest = os.path.expanduser(dest.strip())
-
-        dirs_in_sources = [s for s in source_list if os.path.isdir(s)]
-        recursive = False
-        if dirs_in_sources:
-            reply = QMessageBox.question(
-                parent_window, "cp: рекурсивное копирование",
-                "Среди источников есть директории.\nКопировать рекурсивно (аналог cp -r)?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+    def execute(self, cmd: str) -> str:
+        try:
+            result = subprocess.run(
+                cmd, shell=True, cwd=self.cwd,
+                capture_output=True, text=True, timeout=self.TIMEOUT,
             )
-            if reply != QMessageBox.StandardButton.Yes: return
-            recursive = True
-
-        copied, failed = [], []
-        multiple = len(source_list) > 1
-
-        for src in source_list:
-            try:
-                if not os.path.exists(src):
-                    failed.append(f"{src} (источник не найден)")
-                    continue
-                if os.path.isdir(src):
-                    if not recursive:
-                        failed.append(f"{src} (это директория, пропущено)")
-                        continue
-                    target = os.path.join(dest, os.path.basename(os.path.normpath(src))) if os.path.isdir(dest) else dest
-                    shutil.copytree(src, target, dirs_exist_ok=True)
-                    copied.append(f"{src} -> {target}/")
-                else:
-                    if os.path.isdir(dest):
-                        target = os.path.join(dest, os.path.basename(src))
-                    elif multiple:
-                        failed.append(f"{src} (несколько источников — назначение должно быть директорией)")
-                        continue
-                    else:
-                        target = dest
-                    shutil.copy2(src, target)
-                    copied.append(f"{src} -> {target}")
-            except Exception as e:
-                failed.append(f"{src} ({str(e)})")
-
-        if copied: print_out(f"Скопировано ({len(copied)}):\n" + "\n".join(copied))
-        if failed: print_out(f"Ошибки cp ({len(failed)}):\n" + "\n".join(failed))
-
-    def handle_mv(self, parent_window, print_out):
-        source, ok = QInputDialog.getText(parent_window, "Команда mv", "Введите источник (файл/директорию) или {}:")
-        if not (ok and source.strip()): return
-
-        dest, ok = QInputDialog.getText(parent_window, "Команда mv", "Введите назначение (новое имя или существующую директорию):")
-        if not (ok and dest.strip()): return
-
-        source_list = [os.path.expanduser(s) for s in self._parse_input_to_list(source)]
-        dest = os.path.expanduser(dest.strip())
-
-        moved, failed = [], []
-        multiple = len(source_list) > 1
-
-        for src in source_list:
-            try:
-                if not os.path.exists(src):
-                    failed.append(f"{src} (источник не найден)")
-                    continue
-                if os.path.isdir(dest):
-                    target = os.path.join(dest, os.path.basename(os.path.normpath(src)))
-                elif multiple:
-                    failed.append(f"{src} (несколько источников — назначение должно быть директорией)")
-                    continue
-                else:
-                    target = dest
-
-                if os.path.isdir(src) and os.path.abspath(target).startswith(os.path.abspath(src) + os.sep):
-                    failed.append(f"{src} (нельзя переместить директорию внутрь себя)")
-                    continue
-
-                shutil.move(src, target)
-                moved.append(f"{src} -> {target}")
-            except Exception as e:
-                failed.append(f"{src} ({str(e)})")
-
-        if moved: print_out(f"Перемещено ({len(moved)}):\n" + "\n".join(moved))
-        if failed: print_out(f"Ошибки mv ({len(failed)}):\n" + "\n".join(failed))
-
-    def handle_rm(self, parent_window, print_out):
-        target, ok = QInputDialog.getText(parent_window, "Команда rm", "Введите имя файла/директории для удаления или {}:")
-        if not (ok and target.strip()): return
-
-        target_list = [os.path.expanduser(t) for t in self._parse_input_to_list(target)]
-
-        dirs_in_targets = [t for t in target_list if os.path.isdir(t)]
-        recursive = False
-        if dirs_in_targets:
-            reply = QMessageBox.question(
-                parent_window, "rm: рекурсивное удаление",
-                "Среди целей есть директории.\nУдалить их рекурсивно (аналог rm -r)?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply != QMessageBox.StandardButton.Yes: return
-            recursive = True
-
-        preview = "\n".join(f"  • {t}" for t in target_list)
-        confirm = QMessageBox.warning(
-            parent_window, "Подтверждение удаления",
-            f"Вы действительно хотите удалить следующие объекты?\n\n{preview}\n\nЭто действие необратимо!",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
-        if confirm != QMessageBox.StandardButton.Yes: return
-
-        removed_files, removed_dirs, failed = [], [], []
-
-        for t in target_list:
-            try:
-                if not os.path.exists(t):
-                    failed.append(f"{t} (не найдено)")
-                    continue
-                if os.path.isdir(t):
-                    if not recursive:
-                        failed.append(f"{t} (это директория, нужен -r)")
-                        continue
-                    shutil.rmtree(t)
-                    removed_dirs.append(t)
-                else:
-                    os.remove(t)
-                    removed_files.append(t)
-            except Exception as e:
-                failed.append(f"{t} ({str(e)})")
-
-        if removed_files: print_out(f"Удалено файлов ({len(removed_files)}):\n" + "\n".join(removed_files))
-        if removed_dirs: print_out(f"Удалено директорий ({len(removed_dirs)}):\n" + "\n".join(removed_dirs))
-        if failed: print_out(f"Ошибки rm ({len(failed)}):\n" + "\n".join(failed))
-
-    def handle_cat(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда cat", "Введите имена файлов для просмотра:")
-        if not (ok and filename.strip()): return
-
-        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
-        output_content, errors = [], []
-
-        for f_name in file_list:
-            try:
-                if not os.path.exists(f_name):
-                    errors.append(f"{f_name}: Нет такого файла или каталога")
-                    continue
-                if os.path.isdir(f_name):
-                    errors.append(f"{f_name}: Это каталог")
-                    continue
-                
-                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
-                    content = file.read()
-                    if content: output_content.append(content)
-                    else: output_content.append(f"--- (Файл {f_name} пуст) ---")
-            except Exception as e:
-                errors.append(f"{f_name}: {str(e)}")
-
-        final_text = "".join(output_content)
-        if errors:
-            if final_text: final_text += "\n\n"
-            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
-
-        if not final_text.strip(): final_text = "(Нет вывода)"
-        print_out(final_text)
-
-    def handle_less(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда less", "Введите имя файла для просмотра (или {}):")
-        if not (ok and filename.strip()): return
-
-        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
-        output_content, errors = [], []
-
-        for f_name in file_list:
-            try:
-                if not os.path.exists(f_name):
-                    errors.append(f"{f_name}: Нет такого файла или каталога")
-                    continue
-                if os.path.isdir(f_name):
-                    errors.append(f"{f_name}: Это каталог")
-                    continue
-                
-                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
-                    content = file.read()
-                    if content: output_content.append(content)
-                    else: output_content.append(f"--- (Файл {f_name} пуст) ---")
-            except Exception as e:
-                errors.append(f"{f_name}: {str(e)}")
-
-        final_text = "".join(output_content)
-        if errors:
-            if final_text: final_text += "\n\n"
-            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
-
-        if not final_text.strip():
-            print_out("Файл пуст или не найден.")
-            return
-
-        dialog = QDialog(parent_window)
-        dialog.setWindowTitle(f"less: {filename}")
-        dialog.resize(800, 600)
-
-        layout = QVBoxLayout(dialog)
-
-        text_area = QPlainTextEdit(dialog)
-        text_area.setPlainText(final_text)
-        text_area.setReadOnly(True)
-        text_area.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: 'Courier New', Consolas, monospace;
-                font-size: 14px;
-                border: none;
-            }
-        """)
-
-        btn_close = QPushButton("Закрыть (q)", dialog)
-        btn_close.clicked.connect(dialog.accept)
-
-        layout.addWidget(text_area)
-        layout.addWidget(btn_close)
-
-        print_out(f"Открыт просмотр файла: {filename} (нажмите 'Закрыть' для выхода)")
-        dialog.exec()
-
-    def handle_head(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда head", "Введите имена файлов для просмотра (или {}):")
-        if not (ok and filename.strip()): return
-
-        lines_str, ok = QInputDialog.getText(parent_window, "Команда head", "Сколько первых строк вывести? (оставьте пустым для 10):")
-        if not ok: return
-        
-        try:
-            num_lines = int(lines_str.strip()) if lines_str.strip() else 10
-            if num_lines < 1: num_lines = 10
-        except ValueError:
-            num_lines = 10
-
-        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
-        output_parts, errors = [], []
-        multiple_files = len(file_list) > 1
-
-        for f_name in file_list:
-            try:
-                if not os.path.exists(f_name):
-                    errors.append(f"{f_name}: Нет такого файла или каталога")
-                    continue
-                if os.path.isdir(f_name):
-                    errors.append(f"{f_name}: Это каталог")
-                    continue
-                
-                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
-                    lines = file.readlines()
-                    content = "".join(lines[:num_lines])
-                    if len(lines) > num_lines and not content.endswith('\n'):
-                        content += '\n'
-                    
-                    if multiple_files:
-                        output_parts.append(f"==> {f_name} <==\n{content}")
-                    else:
-                        output_parts.append(content)
-            except Exception as e:
-                errors.append(f"{f_name}: {str(e)}")
-
-        final_text = "\n".join(output_parts)
-        if errors:
-            if final_text: final_text += "\n\n"
-            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
-
-        if not final_text.strip(): final_text = "(Нет вывода)"
-        print_out(final_text)
-
-    def handle_tail(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда tail", "Введите имена файлов для просмотра (или {}):")
-        if not (ok and filename.strip()): return
-
-        lines_str, ok = QInputDialog.getText(parent_window, "Команда tail", "Сколько последних строк вывести? (оставьте пустым для 10):")
-        if not ok: return
-        
-        try:
-            num_lines = int(lines_str.strip()) if lines_str.strip() else 10
-            if num_lines < 1: num_lines = 10
-        except ValueError:
-            num_lines = 10
-
-        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
-        output_parts, errors = [], []
-        multiple_files = len(file_list) > 1
-
-        for f_name in file_list:
-            try:
-                if not os.path.exists(f_name):
-                    errors.append(f"{f_name}: Нет такого файла или каталога")
-                    continue
-                if os.path.isdir(f_name):
-                    errors.append(f"{f_name}: Это каталог")
-                    continue
-                
-                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
-                    lines = file.readlines()
-                    content = "".join(lines[-num_lines:])
-                    
-                    if multiple_files:
-                        output_parts.append(f"==> {f_name} <==\n{content}")
-                    else:
-                        output_parts.append(content)
-            except Exception as e:
-                errors.append(f"{f_name}: {str(e)}")
-
-        final_text = "\n".join(output_parts)
-        if errors:
-            if final_text: final_text += "\n\n"
-            final_text += "--- ОШИБКИ ---\n" + "\n".join(errors)
-
-        if not final_text.strip(): final_text = "(Нет вывода)"
-        print_out(final_text)
-
-    def handle_grep(self, parent_window, print_out):
-        pattern, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите строку или регулярное выражение для поиска:")
-        if not (ok and pattern.strip()): return
-
-        filename, ok = QInputDialog.getText(parent_window, "Команда grep", "Введите имена файлов для поиска (или {}):")
-        if not (ok and filename.strip()): return
-
-        file_list = [os.path.expanduser(f) for f in self._parse_input_to_list(filename)]
-        output_lines, errors = [], []
-        multiple_files = len(file_list) > 1
-        found_any = False
-
-        try:
-            regex = re.compile(pattern)
-        except re.error as e:
-            print_out(f"grep: Ошибка в регулярном выражении: {str(e)}")
-            return
-
-        for f_name in file_list:
-            try:
-                if not os.path.exists(f_name):
-                    errors.append(f"{f_name}: Нет такого файла или каталога")
-                    continue
-                if os.path.isdir(f_name):
-                    errors.append(f"{f_name}: Это каталог")
-                    continue
-                
-                with open(f_name, 'r', encoding='utf-8', errors='replace') as file:
-                    for line_num, line in enumerate(file, 1):
-                        if regex.search(line):
-                            found_any = True
-                            line_clean = line.rstrip('\n')
-                            if multiple_files:
-                                output_lines.append(f"{f_name}:{line_clean}")
-                            else:
-                                output_lines.append(line_clean)
-            except Exception as e:
-                errors.append(f"{f_name}: {str(e)}")
-
-        if not found_any:
-            print_out("Совпадений не найдено.")
-        else:
-            print_out("\n".join(output_lines))
-            
-        if errors:
-            print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
-
-    def handle_chmod(self, parent_window, print_out):
-        mode_str, ok = QInputDialog.getText(
-            parent_window, 
-            "Команда chmod", 
-            "Введите права доступа\n"
-            "(например: u+x, go-w, a=rw, 755):"
-        )
-        if not (ok and mode_str.strip()): return
-
-        target, ok = QInputDialog.getText(
-            parent_window, 
-            "Команда chmod", 
-            "Введите имена файлов/директорий для изменения прав (или {}):"
-        )
-        if not (ok and target.strip()): return
-
-        target_list = [os.path.expanduser(t) for t in self._parse_input_to_list(target)]
-        success_count = 0
-        errors = []
-
-        for t in target_list:
-            try:
-                if not os.path.exists(t):
-                    errors.append(f"{t}: Нет такого файла или каталога")
-                    continue
-                
-                current_mode = os.stat(t).st_mode
-                new_mode = self._calculate_new_mode(current_mode, mode_str.strip())
-                os.chmod(t, new_mode)
-                success_count += 1
-            except ValueError as ve:
-                print_out(f"Ошибка синтаксиса chmod: {str(ve)}")
-                return
-            except Exception as e:
-                errors.append(f"{t}: {str(e)}")
-
-        if success_count > 0:
-            print_out(f"Успешно изменены права для {success_count} объекта(ов).")
-        if errors:
-            print_out("\n--- ОШИБКИ ---\n" + "\n".join(errors))
-
-    def handle_ps(self, parent_window, print_out):
-        """Вывод списка процессов (аналог ps)"""
-        args, ok = QInputDialog.getText(
-            parent_window, 
-            "Команда ps", 
-            "Введите ключи команды ps (например: aux, -ef)\n"
-            "или оставьте пустым для стандартного вывода:"
-        )
-        if not ok:
-            return
-
-        command = ["ps"]
-        if args.strip():
-            command.extend(args.strip().split())
-
-        try:
-            result = subprocess.check_output(command, text=True, stderr=subprocess.STDOUT)
-            if not result.strip():
-                result = "(Список процессов пуст)"
-            print_out(result)
-        except subprocess.CalledProcessError as e:
-            print_out(f"Ошибка выполнения ps:\n{e.output}")
+            out = result.stdout
+            if result.stderr:
+                out += result.stderr
+            if not out.strip():
+                out = "[команда выполнена без вывода]"
+            return out
+        except subprocess.TimeoutExpired:
+            return f"[!] Команда превысила лимит времени ({self.TIMEOUT} с)"
         except Exception as e:
-            print_out(f"Критическая ошибка ps:\n{str(e)}")
+            return f"[!] Ошибка выполнения: {e}"
 
-    def handle_pushd(self, parent_window, callback_update_label, print_out):
-        text, ok = QInputDialog.getText(parent_window, "Команда pushd", "Введите путь к новой директории для перехода (можно использовать ~):")
-        if ok and text.strip():
-            expanded_path = os.path.expanduser(text.strip())
-            
-            if os.path.isdir(expanded_path):
-                self.previous_working_dir = os.getcwd()
-                self.dir_stack.append(os.getcwd())
-                os.chdir(expanded_path)
-                callback_update_label(os.getcwd())
-                current_stack_str = " -> ".join([os.getcwd()] + self.dir_stack[::-1])
-                print_out(f"Директория добавлена в стек.\nТекущий стек:\n{current_stack_str}")
-            else:
-                print_out(f"pushd: {text.strip()}: Нет такого файла или каталога")
-
-    def handle_popd(self, parent_window, callback_update_label, print_out):
-        if self.dir_stack:
-            self.previous_working_dir = os.getcwd()
-            previous_dir = self.dir_stack.pop()
-            os.chdir(previous_dir)
-            callback_update_label(os.getcwd())
-            print_out(f"Вернулись назад в:\n{previous_dir}")
-        else:
-            print_out("Ошибка popd: Стек директорий пуст!")
-
-    def handle_dirs(self, parent_window, print_out):
-        if not self.dir_stack:
-            print_out(f"Стек пуст. Текущая папка:\n{os.getcwd()}")
-        else:
-            stack_list = [os.getcwd()] + self.dir_stack[::-1]
-            formatted_stack = "\n".join([f"[{i}] {path}" for i, path in enumerate(stack_list)])
-            print_out(formatted_stack)
-
-    def handle_cd_minus(self, parent_window, callback_update_label, print_out):
-        if self.previous_working_dir is None:
-            print_out("cd -: Предыдущая директория отсутствует (OLDPWD не задан)")
-        else:
-            temp_current = os.getcwd()
-            os.chdir(self.previous_working_dir)
-            callback_update_label(os.getcwd())
-            print_out(f"Перешли в предыдущую директорию:\n{os.getcwd()}")
-            self.previous_working_dir = temp_current
-
-    def handle_find(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда find", "Введите имя файла или маску для поиска (например: *.txt):")
-        if ok and filename.strip():
-            command = ["find", ".", "-name", filename.strip()]
-            try:
-                result = subprocess.check_output(command, cwd=os.getcwd(), text=True, stderr=subprocess.STDOUT)
-                if not result.strip():
-                    print_out("Файлы не найдены.")
-                else:
-                    print_out(result)
-            except subprocess.CalledProcessError as e:
-                print_out(f"Ошибка find:\n{e.output}")
-
-    def handle_locate(self, parent_window, print_out):
-        filename, ok = QInputDialog.getText(parent_window, "Команда locate", "Введите ключевое слово для глобального поиска:")
-        if ok and filename.strip():
-            command = ["locate", filename.strip()]
-            try:
-                result = subprocess.check_output(command, text=True, stderr=subprocess.STDOUT)
-                if not result.strip():
-                    print_out("Ничего не найдено в базе данных системы.")
-                else:
-                    print_out(result)
-            except subprocess.CalledProcessError:
-                print_out("Предупреждение locate: Ничего не найдено или утилита locate не установлена.")
-            except Exception as e:
-                print_out(f"Ошибка locate:\n{str(e)}")
+    def change_dir(self, path: str) -> tuple[bool, str]:
+        path = os.path.expanduser(path.strip())
+        new = path if os.path.isabs(path) else os.path.join(self.cwd, path)
+        new = os.path.normpath(new)
+        if os.path.isdir(new):
+            self.cwd = new
+            return True, ""
+        return False, f"cd: нет такого каталога: {path}"

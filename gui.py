@@ -1,294 +1,363 @@
-import os
-from PyQt6.QtWidgets import (QWidget, QPushButton, QVBoxLayout, QHBoxLayout, 
-                             QStackedLayout, QLabel, QMessageBox, QPlainTextEdit)
-from PyQt6.QtCore import Qt
-from functools import partial
-from commands import TerminalCommands 
+"""GUI приложения TEiL."""
 
-class MainAppWindow(QWidget):
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QScrollArea,
+    QDialog, QCheckBox, QGroupBox,
+)
+from PyQt6.QtGui import QTextCursor
+
+from commands import CATEGORIES, CommandExecutor
+
+
+STYLESHEET = """
+QMainWindow, QWidget {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    font-family: "Consolas", "DejaVu Sans Mono", "Courier New", monospace;
+    font-size: 13px;
+}
+QLabel#cwdLabel {
+    color: #89b4fa;
+    font-weight: bold;
+    padding: 4px 8px;
+    background-color: #11111b;
+    border-radius: 4px;
+}
+QLabel#sectionTitle {
+    color: #a6e3a1;
+    font-weight: bold;
+    padding: 4px 2px;
+}
+QLabel#preview {
+    color: #a6e3a1;
+    background-color: #11111b;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-family: "Consolas", "DejaVu Sans Mono", monospace;
+}
+QLineEdit {
+    background-color: #11111b;
+    border: 1px solid #313244;
+    border-radius: 4px;
+    padding: 5px 8px;
+    color: #cdd6f4;
+}
+QLineEdit:focus { border: 1px solid #89b4fa; }
+QTextEdit#output {
+    background-color: #11111b;
+    border: 1px solid #313244;
+    border-radius: 6px;
+    padding: 8px;
+    color: #a6e3a1;
+    font-family: "Consolas", "DejaVu Sans Mono", monospace;
+    font-size: 13px;
+}
+QTabWidget::pane {
+    border: 1px solid #313244;
+    border-radius: 6px;
+    background: #181825;
+}
+QTabBar::tab {
+    background: #181825;
+    color: #bac2de;
+    padding: 6px 12px;
+    border: 1px solid #313244;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    margin-right: 2px;
+}
+QTabBar::tab:selected { background: #313244; color: #89b4fa; }
+QTabBar::tab:hover { background: #45475a; }
+QPushButton#cmdBtn {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 4px;
+    padding: 7px 10px;
+    text-align: left;
+}
+QPushButton#cmdBtn:hover { background-color: #45475a; border: 1px solid #89b4fa; }
+QPushButton#cmdBtn:pressed { background-color: #585b70; }
+QPushButton#dangerBtn {
+    background-color: #3a1e1e;
+    color: #f38ba8;
+    border: 1px solid #f38ba8;
+    border-radius: 4px;
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: bold;
+}
+QPushButton#dangerBtn:hover { background-color: #5a2424; }
+QPushButton#dangerBtn:pressed { background-color: #7a2e2e; }
+QPushButton {
+    background-color: #89b4fa;
+    color: #11111b;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-weight: bold;
+}
+QPushButton:hover { background-color: #74a8f7; }
+QPushButton:pressed { background-color: #5b93e6; }
+QScrollArea { border: none; background: #181825; }
+QScrollBar:vertical { background: #181825; width: 10px; margin: 0; }
+QScrollBar::handle:vertical {
+    background: #45475a; border-radius: 5px; min-height: 20px;
+}
+QScrollBar::handle:vertical:hover { background: #585b70; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QGroupBox {
+    border: 1px solid #313244;
+    border-radius: 4px;
+    margin-top: 10px;
+    padding: 8px 6px 6px 6px;
+    color: #bac2de;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+QCheckBox { color: #cdd6f4; padding: 2px; }
+QCheckBox::indicator { width: 15px; height: 15px; }
+"""
+
+
+def _is_single_letter_flag(flag: str) -> bool:
+    """True для -a, -l, -h, -R и т.п. Такие флаги склеиваются."""
+    return len(flag) == 2 and flag[0] == "-" and flag[1].isalpha()
+
+
+# ---------------------------------------------------------------------- диалог
+class CommandDialog(QDialog):
+    """Диалог выбора ключей и ввода аргумента для конкретной команды."""
+
+    def __init__(self, cmd: dict, parent=None):
+        super().__init__(parent)
+        self.cmd = cmd
+        self.full_command = cmd["name"]
+        self.setWindowTitle(f"TEiL — {cmd['name']}")
+        self.setMinimumWidth(440)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(8)
+
+        desc = QLabel(cmd.get("desc", ""))
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # чек-боксы ключей
+        self.flag_checks: list[QCheckBox] = []
+        flags = cmd.get("flags", [])
+        if flags:
+            group = QGroupBox("Ключи (однобуквенные склеиваются в один флаг)")
+            gl = QVBoxLayout(group)
+            gl.setSpacing(4)
+            for flag in flags:
+                cb = QCheckBox(flag)
+                cb.stateChanged.connect(self._update_preview)
+                gl.addWidget(cb)
+                self.flag_checks.append(cb)
+            layout.addWidget(group)
+
+        # поле аргумента
+        if cmd.get("arg_placeholder") or flags:
+            layout.addWidget(QLabel("Аргумент:"))
+            self.args_input = QLineEdit()
+            self.args_input.setPlaceholderText(
+                cmd.get("arg_placeholder", "аргумент (опционально)")
+            )
+            self.args_input.textChanged.connect(self._update_preview)
+            self.args_input.returnPressed.connect(self.accept)
+            layout.addWidget(self.args_input)
+        else:
+            self.args_input = None
+
+        # предпросмотр
+        layout.addWidget(QLabel("Итоговая команда:"))
+        self.preview = QLabel()
+        self.preview.setObjectName("preview")
+        self.preview.setWordWrap(True)
+        layout.addWidget(self.preview)
+
+        # кнопки
+        btns = QHBoxLayout()
+        btns.addStretch(1)
+        cancel = QPushButton("Отмена")
+        cancel.clicked.connect(self.reject)
+        btns.addWidget(cancel)
+
+        ok_text = "Симулировать" if cmd.get("dangerous") else "Выполнить"
+        ok = QPushButton(ok_text)
+        ok.setDefault(True)
+        ok.clicked.connect(self.accept)
+        btns.addWidget(ok)
+        layout.addLayout(btns)
+
+        self._update_preview()
+
+    def _update_preview(self):
+        # собираем выбранные флаги
+        single_letters: list[str] = []
+        other_flags: list[str] = []
+        for cb in self.flag_checks:
+            if not cb.isChecked():
+                continue
+            text = cb.text()
+            if _is_single_letter_flag(text):
+                single_letters.append(text[1])
+            else:
+                other_flags.append(text)
+
+        parts = [self.cmd["name"]]
+
+        # -a + -l + -h -> -alh (сортируем для предсказуемости)
+        if single_letters:
+            parts.append("-" + "".join(sorted(single_letters)))
+
+        # многословные/неоднобуквенные — как есть
+        parts.extend(other_flags)
+
+        # аргумент в конце
+        if self.args_input is not None:
+            args = self.args_input.text().strip()
+            if args:
+                parts.append(args)
+
+        self.full_command = " ".join(parts)
+        self.preview.setText(f"$ {self.full_command}")
+
+    def get_command(self) -> str:
+        return self.full_command
+
+
+# ---------------------------------------------------------------- главное окно
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.cmd_logic = TerminalCommands() 
-        self.init_ui()
+        self.setWindowTitle("TEiL — Terminal Emulator in Linux")
+        self.resize(1150, 720)
+        self.setStyleSheet(STYLESHEET)
 
-    def init_ui(self):
-        self.setWindowTitle("TEiL")
-        self.setFixedSize(1300, 700)
+        self.executor = CommandExecutor()
+        self._build_ui()
+        self._update_cwd()
 
-        # ================= ЛЕВАЯ ЧАСТЬ: ЗАГОЛОВОК И БЕЛАЯ ПАНЕЛЬ =================
-        current_dir = os.getcwd()
-        
-        self.dir_label = QLabel(f"Текущая директория: {current_dir}", parent=self)
-        self.dir_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.dir_label.setWordWrap(False)
-        
-        font = self.dir_label.font()
-        font.setPointSize(12)
-        font.setBold(True)
-        self.dir_label.setFont(font)
-        self.dir_label.setStyleSheet("padding-left: 5px;")
+        self._append_output(
+            "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
+            "Нажмите кнопку команды, отметьте нужные ключи и введите аргумент.\n"
+            "Однобуквенные ключи склеиваются автоматически: "
+            "-l + -a + -h → -alh.\n"
+            "Команды из категории «⚠ Опасные» НЕ выполняются — "
+            "показывается только симуляция вывода.\n"
+        )
 
-        self.output_console = QPlainTextEdit(parent=self)
-        self.output_console.setReadOnly(True)
-        self.output_console.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: white;
-                color: black;
-                font-family: 'Courier New', Consolas, monospace;
-                font-size: 14px;
-                border: 1px solid #ccc;
-                padding: 5px;
-            }
-        """)
+    # ------------------------------------------------------------------ UI
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
 
-        left_layout = QVBoxLayout()
-        left_layout.addWidget(self.dir_label)
-        left_layout.addWidget(self.output_console)
+        header = QHBoxLayout()
+        header.addWidget(QLabel("Текущая директория:"))
+        self.cwd_label = QLabel()
+        self.cwd_label.setObjectName("cwdLabel")
+        header.addWidget(self.cwd_label, 1)
+        root.addLayout(header)
 
-        # ================= ПРАВАЯ ЧАСТЬ: КОЛОНКА КНОПОК =================
-        self.right_stacked_layout = QStackedLayout()
+        main_area = QHBoxLayout()
 
-        # --- ЭКРАН 0: Главное меню ---
-        menu_widget = QWidget(parent=self)
-        button_layout = QVBoxLayout()
-        button_layout.setContentsMargins(0, 0, 0, 0) 
+        self.tabs = QTabWidget()
+        self.tabs.setMaximumWidth(360)
+        self._build_tabs()
+        main_area.addWidget(self.tabs)
 
-        btn_nav = QPushButton("Навигация и работа с каталогами", parent=menu_widget)
-        btn_files = QPushButton("Управление файлами и папками", parent=menu_widget)
-        btn_text = QPushButton("Просмотр и редактирование текста", parent=menu_widget)
-        btn_perms = QPushButton("Права доступа и владельцы", parent=menu_widget)
-        btn_proc = QPushButton("Управление процессами", parent=menu_widget)
-        btn_sys = QPushButton("Системная информация и оборудование", parent=menu_widget)
-        btn_users = QPushButton("Управление пользователями и группами", parent=menu_widget)
-        btn_pkg = QPushButton("Управление пакетами (ПО)", parent=menu_widget)
-        btn_net = QPushButton("Сеть и интернет", parent=menu_widget)
-        btn_help = QPushButton("Справочные команды", parent=menu_widget)
+        right = QVBoxLayout()
+        title = QLabel("Результат выполнения:")
+        title.setObjectName("sectionTitle")
+        right.addWidget(title)
 
-        buttons_main = [btn_nav, btn_files, btn_text, btn_perms, btn_proc, btn_sys, btn_users, btn_pkg, btn_net, btn_help]
-        for btn in buttons_main:
-            btn.setFixedWidth(350) 
-            btn.setStyleSheet("QPushButton { text-align: center; qproperty-wordWrap: true; padding: 8px; }")
-            button_layout.addWidget(btn)
-        button_layout.addStretch()
+        self.output = QTextEdit()
+        self.output.setObjectName("output")
+        self.output.setReadOnly(True)
+        right.addWidget(self.output, 1)
 
-        menu_layout = QHBoxLayout()
-        menu_layout.setContentsMargins(0, 0, 0, 0)
-        menu_layout.addLayout(button_layout)
-        menu_widget.setLayout(menu_layout)
+        clear_btn = QPushButton("Очистить вывод")
+        clear_btn.clicked.connect(self.output.clear)
+        right.addWidget(clear_btn)
 
-        # --- ЭКРАН 1: Подменю "Навигация и работа с каталогами" ---
-        sub_widget_nav = QWidget(parent=self)
-        sub_button_layout_nav = QVBoxLayout()
-        sub_button_layout_nav.setContentsMargins(0, 0, 0, 0)
-        
-        btn_cd = QPushButton("cd (Смена директории)", parent=sub_widget_nav)
-        btn_ls = QPushButton("ls (Список файлов)", parent=sub_widget_nav)
-        btn_pushd = QPushButton("pushd (Поместить в стек и перейти)", parent=sub_widget_nav)
-        btn_popd = QPushButton("popd (Извлечь из стека и вернуться)", parent=sub_widget_nav)
-        btn_dirs = QPushButton("dirs (Показать стек директорий)", parent=sub_widget_nav)
-        btn_cd_minus = QPushButton("cd - (Вернуться в прошлую папку)", parent=sub_widget_nav)
-        btn_back_nav = QPushButton("Назад", parent=sub_widget_nav)
-        
-        buttons_sub_nav = [btn_cd, btn_ls, btn_pushd, btn_popd, btn_dirs, btn_cd_minus, btn_back_nav]
-        for btn in buttons_sub_nav:
-            btn.setFixedWidth(350) 
-            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
-            sub_button_layout_nav.addWidget(btn)
-        sub_button_layout_nav.addStretch()
-        
-        sub_menu_layout_nav = QHBoxLayout()
-        sub_menu_layout_nav.setContentsMargins(0, 0, 0, 0)
-        sub_menu_layout_nav.addLayout(sub_button_layout_nav)
-        sub_widget_nav.setLayout(sub_menu_layout_nav)
+        main_area.addLayout(right, 1)
+        root.addLayout(main_area, 1)
 
-        # --- ЭКРАН 2: Подменю "Управление файлами и папками" ---
-        sub_widget_files = QWidget(parent=self)
-        sub_button_layout_files = QVBoxLayout()
-        sub_button_layout_files.setContentsMargins(0, 0, 0, 0)
-        
-        btn_touch = QPushButton("touch (Создать/обновить файл)", parent=sub_widget_files)
-        btn_mkdir = QPushButton("mkdir (Создать директорию)", parent=sub_widget_files)
-        btn_cp = QPushButton("cp (Копировать файл/директорию)", parent=sub_widget_files)
-        btn_mv = QPushButton("mv (Переместить/переименовать)", parent=sub_widget_files)
-        btn_rm = QPushButton("rm (Удалить файл/директорию)", parent=sub_widget_files)
-        btn_find = QPushButton("find (Поиск файлов в текущей папке)", parent=sub_widget_files)
-        btn_locate = QPushButton("locate (Быстрый поиск по системе)", parent=sub_widget_files)
-        btn_back_files = QPushButton("Назад", parent=sub_widget_files)
-        
-        buttons_sub_files = [btn_touch, btn_mkdir, btn_cp, btn_mv, btn_rm, btn_find, btn_locate, btn_back_files]
-        for btn in buttons_sub_files:
-            btn.setFixedWidth(350)
-            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
-            sub_button_layout_files.addWidget(btn)
-        sub_button_layout_files.addStretch()
-        
-        sub_menu_layout_files = QHBoxLayout()
-        sub_menu_layout_files.setContentsMargins(0, 0, 0, 0)
-        sub_menu_layout_files.addLayout(sub_button_layout_files)
-        sub_widget_files.setLayout(sub_menu_layout_files)
+    def _build_tabs(self):
+        for category, commands in CATEGORIES.items():
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            inner = QWidget()
+            v = QVBoxLayout(inner)
+            v.setSpacing(6)
+            v.setContentsMargins(6, 6, 6, 6)
 
-        # --- ЭКРАН 3: Подменю "Просмотр и редактирование текста" ---
-        sub_widget_text = QWidget(parent=self)
-        sub_button_layout_text = QVBoxLayout()
-        sub_button_layout_text.setContentsMargins(0, 0, 0, 0)
-        
-        btn_cat = QPushButton("cat (Вывод содержимого файла)", parent=sub_widget_text)
-        btn_less = QPushButton("less (Постраничный просмотр)", parent=sub_widget_text)
-        btn_head = QPushButton("head (Вывод первых N строк)", parent=sub_widget_text)
-        btn_tail = QPushButton("tail (Вывод последних N строк)", parent=sub_widget_text)
-        btn_grep = QPushButton("grep (Поиск строк в файле)", parent=sub_widget_text)
-        btn_back_text = QPushButton("Назад", parent=sub_widget_text)
-        
-        buttons_sub_text = [btn_cat, btn_less, btn_head, btn_tail, btn_grep, btn_back_text]
-        for btn in buttons_sub_text:
-            btn.setFixedWidth(350)
-            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
-            sub_button_layout_text.addWidget(btn)
-        sub_button_layout_text.addStretch()
-        
-        sub_menu_layout_text = QHBoxLayout()
-        sub_menu_layout_text.setContentsMargins(0, 0, 0, 0)
-        sub_menu_layout_text.addLayout(sub_button_layout_text)
-        sub_widget_text.setLayout(sub_menu_layout_text)
+            for cmd in commands:
+                btn = QPushButton(cmd["name"])
+                btn.setToolTip(cmd.get("desc", ""))
+                btn.setObjectName(
+                    "dangerBtn" if cmd.get("dangerous") else "cmdBtn"
+                )
+                btn.clicked.connect(
+                    lambda _=False, c=cmd: self._on_command_clicked(c)
+                )
+                v.addWidget(btn)
 
-        # --- ЭКРАН 4: Подменю "Права доступа и владельцы" ---
-        sub_widget_perms = QWidget(parent=self)
-        sub_button_layout_perms = QVBoxLayout()
-        sub_button_layout_perms.setContentsMargins(0, 0, 0, 0)
-        
-        btn_chmod = QPushButton("chmod (Изменить права доступа)", parent=sub_widget_perms)
-        btn_back_perms = QPushButton("Назад", parent=sub_widget_perms)
-        
-        buttons_sub_perms = [btn_chmod, btn_back_perms]
-        for btn in buttons_sub_perms:
-            btn.setFixedWidth(350)
-            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
-            sub_button_layout_perms.addWidget(btn)
-        sub_button_layout_perms.addStretch()
-        
-        sub_menu_layout_perms = QHBoxLayout()
-        sub_menu_layout_perms.setContentsMargins(0, 0, 0, 0)
-        sub_menu_layout_perms.addLayout(sub_button_layout_perms)
-        sub_widget_perms.setLayout(sub_menu_layout_perms)
+            v.addStretch(1)
+            scroll.setWidget(inner)
+            self.tabs.addTab(scroll, category)
 
-        # --- ЭКРАН 5: Подменю "Управление процессами" ---
-        sub_widget_proc = QWidget(parent=self)
-        sub_button_layout_proc = QVBoxLayout()
-        sub_button_layout_proc.setContentsMargins(0, 0, 0, 0)
-        
-        btn_ps = QPushButton("ps (Список процессов)", parent=sub_widget_proc)
-        btn_back_proc = QPushButton("Назад", parent=sub_widget_proc)
-        
-        buttons_sub_proc = [btn_ps, btn_back_proc]
-        for btn in buttons_sub_proc:
-            btn.setFixedWidth(350)
-            btn.setStyleSheet("QPushButton { text-align: center; padding: 8px; }")
-            sub_button_layout_proc.addWidget(btn)
-        sub_button_layout_proc.addStretch()
-        
-        sub_menu_layout_proc = QHBoxLayout()
-        sub_menu_layout_proc.setContentsMargins(0, 0, 0, 0)
-        sub_menu_layout_proc.addLayout(sub_button_layout_proc)
-        sub_widget_proc.setLayout(sub_menu_layout_proc)
+    # ------------------------------------------------------------- actions
+    def _on_command_clicked(self, cmd: dict):
+        if cmd.get("instant"):
+            self._execute(cmd["name"], cmd)
+            return
 
-        # Добавляем экраны в стек
-        self.right_stacked_layout.addWidget(menu_widget)       # Индекс 0
-        self.right_stacked_layout.addWidget(sub_widget_nav)    # Индекс 1
-        self.right_stacked_layout.addWidget(sub_widget_files)  # Индекс 2
-        self.right_stacked_layout.addWidget(sub_widget_text)   # Индекс 3
-        self.right_stacked_layout.addWidget(sub_widget_perms)  # Индекс 4
-        self.right_stacked_layout.addWidget(sub_widget_proc)   # Индекс 5
+        dlg = CommandDialog(cmd, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._execute(dlg.get_command(), cmd)
 
-        right_layout = QVBoxLayout()
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addLayout(self.right_stacked_layout)
+    def _execute(self, full_cmd: str, cmd: dict):
+        self._append_output(f"\n$ {full_cmd}")
 
-        # ================= ПРИВЯЗКА СОБЫТИЙ =================
-        btn_nav.clicked.connect(self.show_nav_sub_screen)
-        btn_files.clicked.connect(self.show_files_sub_screen) 
-        btn_text.clicked.connect(self.show_text_sub_screen)
-        btn_perms.clicked.connect(self.show_perms_sub_screen)
-        btn_proc.clicked.connect(self.show_proc_sub_screen)
-        
-        in_dev = partial(QMessageBox.information, self, "Инфо", "Раздел в разработке")
-        btn_sys.clicked.connect(in_dev)
-        btn_users.clicked.connect(in_dev)
-        btn_pkg.clicked.connect(in_dev)
-        btn_net.clicked.connect(in_dev)
-        btn_help.clicked.connect(in_dev)
+        if cmd["name"] == "cd":
+            target = full_cmd[len("cd"):].strip()
+            if not target:
+                self._append_output(self.executor.cwd)
+            else:
+                ok, err = self.executor.change_dir(target)
+                if ok:
+                    self._update_cwd()
+                else:
+                    self._append_output(err)
+            return
 
-        # --- Навигация ---
-        btn_cd.clicked.connect(lambda: self.run_command("cd", self.cmd_logic.handle_cd, self, self.update_directory_label, self.print_to_console))
-        btn_ls.clicked.connect(lambda: self.run_command("ls", self.cmd_logic.handle_ls, self, self.print_to_console))
-        btn_pushd.clicked.connect(lambda: self.run_command("pushd", self.cmd_logic.handle_pushd, self, self.update_directory_label, self.print_to_console))
-        btn_popd.clicked.connect(lambda: self.run_command("popd", self.cmd_logic.handle_popd, self, self.update_directory_label, self.print_to_console))
-        btn_dirs.clicked.connect(lambda: self.run_command("dirs", self.cmd_logic.handle_dirs, self, self.print_to_console))
-        btn_cd_minus.clicked.connect(lambda: self.run_command("cd -", self.cmd_logic.handle_cd_minus, self, self.update_directory_label, self.print_to_console))
-        btn_back_nav.clicked.connect(self.show_main_screen)
+        if cmd.get("dangerous"):
+            sim = cmd["sim"](full_cmd) if callable(cmd.get("sim")) else cmd.get("sim", "")
+            self._append_output(
+                "⚠ ОПАСНАЯ КОМАНДА — реальное выполнение запрещено.\n" + sim
+            )
+            return
 
-        # --- Файлы ---
-        btn_touch.clicked.connect(lambda: self.run_command("touch", self.cmd_logic.handle_touch, self, self.print_to_console))
-        btn_mkdir.clicked.connect(lambda: self.run_command("mkdir", self.cmd_logic.handle_mkdir, self, self.print_to_console))
-        btn_cp.clicked.connect(lambda: self.run_command("cp", self.cmd_logic.handle_cp, self, self.print_to_console))
-        btn_mv.clicked.connect(lambda: self.run_command("mv", self.cmd_logic.handle_mv, self, self.print_to_console))
-        btn_rm.clicked.connect(lambda: self.run_command("rm", self.cmd_logic.handle_rm, self, self.print_to_console))
-        btn_find.clicked.connect(lambda: self.run_command("find", self.cmd_logic.handle_find, self, self.print_to_console))
-        btn_locate.clicked.connect(lambda: self.run_command("locate", self.cmd_logic.handle_locate, self, self.print_to_console))
-        btn_back_files.clicked.connect(self.show_main_screen)
+        self._append_output(self.executor.execute(full_cmd))
 
-        # --- Текст ---
-        btn_cat.clicked.connect(lambda: self.run_command("cat", self.cmd_logic.handle_cat, self, self.print_to_console))
-        btn_less.clicked.connect(lambda: self.run_command("less", self.cmd_logic.handle_less, self, self.print_to_console))
-        btn_head.clicked.connect(lambda: self.run_command("head", self.cmd_logic.handle_head, self, self.print_to_console))
-        btn_tail.clicked.connect(lambda: self.run_command("tail", self.cmd_logic.handle_tail, self, self.print_to_console))
-        btn_grep.clicked.connect(lambda: self.run_command("grep", self.cmd_logic.handle_grep, self, self.print_to_console))
-        btn_back_text.clicked.connect(self.show_main_screen)
+    # ------------------------------------------------------------- helpers
+    def _update_cwd(self):
+        self.cwd_label.setText(self.executor.cwd)
 
-        # --- Права доступа ---
-        btn_chmod.clicked.connect(lambda: self.run_command("chmod", self.cmd_logic.handle_chmod, self, self.print_to_console))
-        btn_back_perms.clicked.connect(self.show_main_screen)
-
-        # --- Процессы ---
-        btn_ps.clicked.connect(lambda: self.run_command("ps", self.cmd_logic.handle_ps, self, self.print_to_console))
-        btn_back_proc.clicked.connect(self.show_main_screen)
-
-        # ================= ФИНАЛЬНАЯ СБОРКА ОКНА =================
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(20)
-        
-        main_layout.addLayout(left_layout, stretch=7)
-        main_layout.addLayout(right_layout, stretch=3)
-
-        # Приветствие при запуске
-        self.print_to_console("Добро пожаловать в TEiL (Terminal Emulator in Linux).")
-        self.print_to_console("Для начала работы выберите раздел справа.\n")
-
-    def print_to_console(self, text):
-        self.output_console.appendPlainText(text)
-        self.output_console.ensureCursorVisible()
-
-    def run_command(self, cmd_name, command_func, *args):
-        self.print_to_console(f"\nteil@linux:~$ {cmd_name}")
-        command_func(*args)
-
-    def show_nav_sub_screen(self):
-        self.right_stacked_layout.setCurrentIndex(1) 
-
-    def show_files_sub_screen(self):
-        self.right_stacked_layout.setCurrentIndex(2) 
-
-    def show_text_sub_screen(self):
-        self.right_stacked_layout.setCurrentIndex(3)
-
-    def show_perms_sub_screen(self):
-        self.right_stacked_layout.setCurrentIndex(4)
-
-    def show_proc_sub_screen(self):
-        self.right_stacked_layout.setCurrentIndex(5)
-
-    def show_main_screen(self):
-        self.right_stacked_layout.setCurrentIndex(0)  
-
-    def update_directory_label(self, new_path):
-        self.dir_label.setText(f"Текущая директория: {new_path}")
+    def _append_output(self, text: str):
+        if not text.endswith("\n"):
+            text += "\n"
+        self.output.moveCursor(QTextCursor.MoveOperation.End)
+        self.output.insertPlainText(text)
+        self.output.moveCursor(QTextCursor.MoveOperation.End)
