@@ -43,8 +43,6 @@ QTabWidget::pane {
     border: 1px solid #313244; border-radius: 6px;
     background: #181825;
 }
-
-/* кнопки-категории (собственная полоса) */
 QPushButton#tabButton {
     background-color: #181825;
     color: #bac2de;
@@ -55,16 +53,11 @@ QPushButton#tabButton {
     min-height: 22px;
     text-align: center;
 }
-QPushButton#tabButton:hover {
-    background-color: #45475a;
-    color: #cdd6f4;
-}
+QPushButton#tabButton:hover { background-color: #45475a; color: #cdd6f4; }
 QPushButton#tabButton:checked {
-    background-color: #313244;
-    color: #89b4fa;
+    background-color: #313244; color: #89b4fa;
     border: 1px solid #89b4fa;
 }
-
 QPushButton#cmdBtn {
     background-color: #313244; color: #cdd6f4;
     border: 1px solid #45475a; border-radius: 4px;
@@ -79,7 +72,6 @@ QPushButton#dangerBtn {
 }
 QPushButton#dangerBtn:hover { background-color: #5a2424; }
 QPushButton#dangerBtn:pressed { background-color: #7a2e2e; }
-
 QPushButton {
     background-color: #89b4fa; color: #11111b;
     border: none; border-radius: 4px;
@@ -87,7 +79,6 @@ QPushButton {
 }
 QPushButton:hover { background-color: #74a8f7; }
 QPushButton:pressed { background-color: #5b93e6; }
-
 QScrollArea { border: none; background: #181825; }
 QScrollBar:vertical { background: #181825; width: 10px; margin: 0; }
 QScrollBar::handle:vertical {
@@ -100,7 +91,6 @@ QScrollBar::handle:horizontal {
     background: #45475a; border-radius: 5px; min-width: 20px;
 }
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
-
 QGroupBox {
     border: 1px solid #313244; border-radius: 4px;
     margin-top: 10px; padding: 8px 6px 6px 6px; color: #bac2de;
@@ -115,13 +105,6 @@ QCheckBox::indicator { width: 15px; height: 15px; }
 
 # ------------------------------------------------------------- drag-scroll area
 class DragScrollArea(QScrollArea):
-    """QScrollArea с прокруткой перетаскиванием мыши.
-
-    Работает как на тач-экране: пользователь «тащит» содержимое мышкой.
-    Одиночный клик по вложенным кнопкам сохраняется — drag начинается
-    только после смещения мыши больше DRAG_THRESHOLD пикселей.
-    """
-
     DRAG_THRESHOLD = 8
 
     def __init__(self, parent=None):
@@ -133,7 +116,6 @@ class DragScrollArea(QScrollArea):
 
     def setWidget(self, widget):
         super().setWidget(widget)
-        # навешиваем фильтр на всё поддерево виджетов
         self._install_filter_recursive(widget)
 
     def _install_filter_recursive(self, widget):
@@ -143,7 +125,6 @@ class DragScrollArea(QScrollArea):
 
     def eventFilter(self, obj, event):
         et = event.type()
-
         if et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
             self._press_pos = event.globalPosition().toPoint()
             self._scroll_start = (
@@ -151,7 +132,6 @@ class DragScrollArea(QScrollArea):
                 self.verticalScrollBar().value(),
             )
             self._dragging = False
-
         elif et == QEvent.Type.MouseMove:
             if self._press_pos is not None:
                 delta = event.globalPosition().toPoint() - self._press_pos
@@ -159,35 +139,26 @@ class DragScrollArea(QScrollArea):
                     self._dragging = True
                     self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
                 if self._dragging:
-                    self.horizontalScrollBar().setValue(
-                        self._scroll_start[0] - delta.x()
-                    )
-                    self.verticalScrollBar().setValue(
-                        self._scroll_start[1] - delta.y()
-                    )
-                    return True  # блокируем, чтобы кнопки не реагировали
-
+                    self.horizontalScrollBar().setValue(self._scroll_start[0] - delta.x())
+                    self.verticalScrollBar().setValue(self._scroll_start[1] - delta.y())
+                    return True
         elif et == QEvent.Type.MouseButtonRelease:
             was_dragging = self._dragging
             self._press_pos = None
             self._dragging = False
             self.viewport().unsetCursor()
             if was_dragging:
-                return True  # блокируем клик по кнопке
-
+                return True
         return super().eventFilter(obj, event)
 
 
 # ------------------------------------------------------------------ полоса категорий
 class CategoryBar(QWidget):
-    """Горизонтальная полоса категорий с drag-скроллом."""
-
     category_selected = pyqtSignal(int)
 
     def __init__(self, categories: list[str], parent=None):
         super().__init__(parent)
         self.setFixedHeight(46)
-
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -333,10 +304,11 @@ class MainWindow(QMainWindow):
 
         self._append_output(
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Категории можно перетаскивать мышкой, а также список команд.\n"
+            "Категории и списки команд перетаскиваются мышкой.\n"
             "Однобуквенные ключи склеиваются: -l + -a + -h → -alh.\n"
-            "Команды из категории «⚠ Опасные» НЕ выполняются — "
-            "только симуляция вывода.\n"
+            "touch в «Файлы и папки» — безопасный: создаёт файл только\n"
+            "внутри текущей директории.\n"
+            "Команды из категории «⚠ Опасные» НЕ выполняются — только симуляция.\n"
         )
 
     # ------------------------------------------------------------------ UI
@@ -347,7 +319,6 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # шапка
         header = QHBoxLayout()
         header.addWidget(QLabel("Текущая директория:"))
         self.cwd_label = QLabel()
@@ -357,7 +328,6 @@ class MainWindow(QMainWindow):
 
         main_area = QHBoxLayout()
 
-        # левая панель: полоса категорий + QTabWidget с скрытым таб-баром
         left_panel = QWidget()
         left_panel.setMaximumWidth(380)
         left_layout = QVBoxLayout(left_panel)
@@ -376,7 +346,6 @@ class MainWindow(QMainWindow):
 
         main_area.addWidget(left_panel)
 
-        # правая часть
         right = QVBoxLayout()
         title = QLabel("Результат выполнения:")
         title.setObjectName("sectionTitle")
@@ -428,6 +397,14 @@ class MainWindow(QMainWindow):
     def _execute(self, full_cmd: str, cmd: dict):
         self._append_output(f"\n$ {full_cmd}")
 
+        # 1) безопасные встроенные обработчики
+        handler = cmd.get("safe_handler")
+        if handler == "touch":
+            target = full_cmd[len("touch"):].strip()
+            self._append_output(self.executor.safe_touch(target))
+            return
+
+        # 2) cd — меняем директорию
         if cmd["name"] == "cd":
             target = full_cmd[len("cd"):].strip()
             if not target:
@@ -440,6 +417,7 @@ class MainWindow(QMainWindow):
                     self._append_output(err)
             return
 
+        # 3) опасные — только симуляция
         if cmd.get("dangerous"):
             sim = cmd["sim"](full_cmd) if callable(cmd.get("sim")) else cmd.get("sim", "")
             self._append_output(
@@ -447,6 +425,7 @@ class MainWindow(QMainWindow):
             )
             return
 
+        # 4) всё остальное — реальное выполнение
         self._append_output(self.executor.execute(full_cmd))
 
     # ------------------------------------------------------------- helpers
