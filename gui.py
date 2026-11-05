@@ -3,8 +3,9 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QScrollArea,
-    QDialog, QCheckBox, QGroupBox,
+    QDialog, QCheckBox, QGroupBox, QFrame,
 )
+from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 
 from commands import CATEGORIES, CommandExecutor
@@ -18,89 +19,75 @@ QMainWindow, QWidget {
     font-size: 13px;
 }
 QLabel#cwdLabel {
-    color: #89b4fa;
-    font-weight: bold;
-    padding: 4px 8px;
-    background-color: #11111b;
-    border-radius: 4px;
+    color: #89b4fa; font-weight: bold; padding: 4px 8px;
+    background-color: #11111b; border-radius: 4px;
 }
-QLabel#sectionTitle {
-    color: #a6e3a1;
-    font-weight: bold;
-    padding: 4px 2px;
-}
+QLabel#sectionTitle { color: #a6e3a1; font-weight: bold; padding: 4px 2px; }
 QLabel#preview {
-    color: #a6e3a1;
-    background-color: #11111b;
-    padding: 6px 8px;
-    border-radius: 4px;
+    color: #a6e3a1; background-color: #11111b;
+    padding: 6px 8px; border-radius: 4px;
     font-family: "Consolas", "DejaVu Sans Mono", monospace;
 }
 QLineEdit {
-    background-color: #11111b;
-    border: 1px solid #313244;
-    border-radius: 4px;
-    padding: 5px 8px;
-    color: #cdd6f4;
+    background-color: #11111b; border: 1px solid #313244;
+    border-radius: 4px; padding: 5px 8px; color: #cdd6f4;
 }
 QLineEdit:focus { border: 1px solid #89b4fa; }
 QTextEdit#output {
-    background-color: #11111b;
-    border: 1px solid #313244;
-    border-radius: 6px;
-    padding: 8px;
-    color: #a6e3a1;
+    background-color: #11111b; border: 1px solid #313244;
+    border-radius: 6px; padding: 8px; color: #a6e3a1;
     font-family: "Consolas", "DejaVu Sans Mono", monospace;
     font-size: 13px;
 }
 QTabWidget::pane {
-    border: 1px solid #313244;
-    border-radius: 6px;
+    border: 1px solid #313244; border-radius: 6px;
     background: #181825;
 }
-QTabBar::tab {
-    background: #181825;
+
+/* кнопки-категории (собственная полоса) */
+QPushButton#tabButton {
+    background-color: #181825;
     color: #bac2de;
-    padding: 6px 12px;
     border: 1px solid #313244;
-    border-bottom: none;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-    margin-right: 2px;
-}
-QTabBar::tab:selected { background: #313244; color: #89b4fa; }
-QTabBar::tab:hover { background: #45475a; }
-QPushButton#cmdBtn {
-    background-color: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
     border-radius: 4px;
-    padding: 7px 10px;
-    text-align: left;
+    padding: 6px 14px;
+    font-weight: normal;
+    min-height: 22px;
+    text-align: center;
+}
+QPushButton#tabButton:hover {
+    background-color: #45475a;
+    color: #cdd6f4;
+}
+QPushButton#tabButton:checked {
+    background-color: #313244;
+    color: #89b4fa;
+    border: 1px solid #89b4fa;
+}
+
+QPushButton#cmdBtn {
+    background-color: #313244; color: #cdd6f4;
+    border: 1px solid #45475a; border-radius: 4px;
+    padding: 7px 10px; text-align: left;
 }
 QPushButton#cmdBtn:hover { background-color: #45475a; border: 1px solid #89b4fa; }
 QPushButton#cmdBtn:pressed { background-color: #585b70; }
 QPushButton#dangerBtn {
-    background-color: #3a1e1e;
-    color: #f38ba8;
-    border: 1px solid #f38ba8;
-    border-radius: 4px;
-    padding: 7px 10px;
-    text-align: left;
-    font-weight: bold;
+    background-color: #3a1e1e; color: #f38ba8;
+    border: 1px solid #f38ba8; border-radius: 4px;
+    padding: 7px 10px; text-align: left; font-weight: bold;
 }
 QPushButton#dangerBtn:hover { background-color: #5a2424; }
 QPushButton#dangerBtn:pressed { background-color: #7a2e2e; }
+
 QPushButton {
-    background-color: #89b4fa;
-    color: #11111b;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 14px;
-    font-weight: bold;
+    background-color: #89b4fa; color: #11111b;
+    border: none; border-radius: 4px;
+    padding: 6px 14px; font-weight: bold;
 }
 QPushButton:hover { background-color: #74a8f7; }
 QPushButton:pressed { background-color: #5b93e6; }
+
 QScrollArea { border: none; background: #181825; }
 QScrollBar:vertical { background: #181825; width: 10px; margin: 0; }
 QScrollBar::handle:vertical {
@@ -108,32 +95,142 @@ QScrollBar::handle:vertical {
 }
 QScrollBar::handle:vertical:hover { background: #585b70; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { background: #181825; height: 10px; margin: 0; }
+QScrollBar::handle:horizontal {
+    background: #45475a; border-radius: 5px; min-width: 20px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
 QGroupBox {
-    border: 1px solid #313244;
-    border-radius: 4px;
-    margin-top: 10px;
-    padding: 8px 6px 6px 6px;
-    color: #bac2de;
+    border: 1px solid #313244; border-radius: 4px;
+    margin-top: 10px; padding: 8px 6px 6px 6px; color: #bac2de;
 }
 QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
+    subcontrol-origin: margin; left: 8px; padding: 0 4px;
 }
 QCheckBox { color: #cdd6f4; padding: 2px; }
 QCheckBox::indicator { width: 15px; height: 15px; }
 """
 
 
-def _is_single_letter_flag(flag: str) -> bool:
-    """True для -a, -l, -h, -R и т.п. Такие флаги склеиваются."""
-    return len(flag) == 2 and flag[0] == "-" and flag[1].isalpha()
+# ------------------------------------------------------------- drag-scroll area
+class DragScrollArea(QScrollArea):
+    """QScrollArea с прокруткой перетаскиванием мыши.
+
+    Работает как на тач-экране: пользователь «тащит» содержимое мышкой.
+    Одиночный клик по вложенным кнопкам сохраняется — drag начинается
+    только после смещения мыши больше DRAG_THRESHOLD пикселей.
+    """
+
+    DRAG_THRESHOLD = 8
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._dragging = False
+        self._press_pos = None
+        self._scroll_start = None
+        self.viewport().installEventFilter(self)
+
+    def setWidget(self, widget):
+        super().setWidget(widget)
+        # навешиваем фильтр на всё поддерево виджетов
+        self._install_filter_recursive(widget)
+
+    def _install_filter_recursive(self, widget):
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+
+        if et == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = event.globalPosition().toPoint()
+            self._scroll_start = (
+                self.horizontalScrollBar().value(),
+                self.verticalScrollBar().value(),
+            )
+            self._dragging = False
+
+        elif et == QEvent.Type.MouseMove:
+            if self._press_pos is not None:
+                delta = event.globalPosition().toPoint() - self._press_pos
+                if not self._dragging and delta.manhattanLength() > self.DRAG_THRESHOLD:
+                    self._dragging = True
+                    self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+                if self._dragging:
+                    self.horizontalScrollBar().setValue(
+                        self._scroll_start[0] - delta.x()
+                    )
+                    self.verticalScrollBar().setValue(
+                        self._scroll_start[1] - delta.y()
+                    )
+                    return True  # блокируем, чтобы кнопки не реагировали
+
+        elif et == QEvent.Type.MouseButtonRelease:
+            was_dragging = self._dragging
+            self._press_pos = None
+            self._dragging = False
+            self.viewport().unsetCursor()
+            if was_dragging:
+                return True  # блокируем клик по кнопке
+
+        return super().eventFilter(obj, event)
+
+
+# ------------------------------------------------------------------ полоса категорий
+class CategoryBar(QWidget):
+    """Горизонтальная полоса категорий с drag-скроллом."""
+
+    category_selected = pyqtSignal(int)
+
+    def __init__(self, categories: list[str], parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(46)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.scroll = DragScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        container = QWidget()
+        hl = QHBoxLayout(container)
+        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(2)
+
+        self.buttons: list[QPushButton] = []
+        for i, name in enumerate(categories):
+            btn = QPushButton(name)
+            btn.setCheckable(True)
+            btn.setObjectName("tabButton")
+            btn.clicked.connect(lambda _=False, idx=i: self._select(idx))
+            self.buttons.append(btn)
+            hl.addWidget(btn)
+        hl.addStretch()
+
+        self.scroll.setWidget(container)
+        outer.addWidget(self.scroll)
+
+        if self.buttons:
+            self.buttons[0].setChecked(True)
+
+    def _select(self, idx: int):
+        for i, btn in enumerate(self.buttons):
+            btn.setChecked(i == idx)
+        self.category_selected.emit(idx)
 
 
 # ---------------------------------------------------------------------- диалог
-class CommandDialog(QDialog):
-    """Диалог выбора ключей и ввода аргумента для конкретной команды."""
+def _is_single_letter_flag(flag: str) -> bool:
+    return len(flag) == 2 and flag[0] == "-" and flag[1].isalpha()
 
+
+class CommandDialog(QDialog):
     def __init__(self, cmd: dict, parent=None):
         super().__init__(parent)
         self.cmd = cmd
@@ -148,7 +245,6 @@ class CommandDialog(QDialog):
         desc.setWordWrap(True)
         layout.addWidget(desc)
 
-        # чек-боксы ключей
         self.flag_checks: list[QCheckBox] = []
         flags = cmd.get("flags", [])
         if flags:
@@ -162,7 +258,6 @@ class CommandDialog(QDialog):
                 self.flag_checks.append(cb)
             layout.addWidget(group)
 
-        # поле аргумента
         if cmd.get("arg_placeholder") or flags:
             layout.addWidget(QLabel("Аргумент:"))
             self.args_input = QLineEdit()
@@ -175,20 +270,17 @@ class CommandDialog(QDialog):
         else:
             self.args_input = None
 
-        # предпросмотр
         layout.addWidget(QLabel("Итоговая команда:"))
         self.preview = QLabel()
         self.preview.setObjectName("preview")
         self.preview.setWordWrap(True)
         layout.addWidget(self.preview)
 
-        # кнопки
         btns = QHBoxLayout()
         btns.addStretch(1)
         cancel = QPushButton("Отмена")
         cancel.clicked.connect(self.reject)
         btns.addWidget(cancel)
-
         ok_text = "Симулировать" if cmd.get("dangerous") else "Выполнить"
         ok = QPushButton(ok_text)
         ok.setDefault(True)
@@ -199,28 +291,22 @@ class CommandDialog(QDialog):
         self._update_preview()
 
     def _update_preview(self):
-        # собираем выбранные флаги
-        single_letters: list[str] = []
-        other_flags: list[str] = []
+        singles: list[str] = []
+        others: list[str] = []
         for cb in self.flag_checks:
             if not cb.isChecked():
                 continue
-            text = cb.text()
-            if _is_single_letter_flag(text):
-                single_letters.append(text[1])
+            t = cb.text()
+            if _is_single_letter_flag(t):
+                singles.append(t[1])
             else:
-                other_flags.append(text)
+                others.append(t)
 
         parts = [self.cmd["name"]]
+        if singles:
+            parts.append("-" + "".join(sorted(singles)))
+        parts.extend(others)
 
-        # -a + -l + -h -> -alh (сортируем для предсказуемости)
-        if single_letters:
-            parts.append("-" + "".join(sorted(single_letters)))
-
-        # многословные/неоднобуквенные — как есть
-        parts.extend(other_flags)
-
-        # аргумент в конце
         if self.args_input is not None:
             args = self.args_input.text().strip()
             if args:
@@ -247,11 +333,10 @@ class MainWindow(QMainWindow):
 
         self._append_output(
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Нажмите кнопку команды, отметьте нужные ключи и введите аргумент.\n"
-            "Однобуквенные ключи склеиваются автоматически: "
-            "-l + -a + -h → -alh.\n"
+            "Категории можно перетаскивать мышкой, а также список команд.\n"
+            "Однобуквенные ключи склеиваются: -l + -a + -h → -alh.\n"
             "Команды из категории «⚠ Опасные» НЕ выполняются — "
-            "показывается только симуляция вывода.\n"
+            "только симуляция вывода.\n"
         )
 
     # ------------------------------------------------------------------ UI
@@ -262,6 +347,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
+        # шапка
         header = QHBoxLayout()
         header.addWidget(QLabel("Текущая директория:"))
         self.cwd_label = QLabel()
@@ -271,11 +357,26 @@ class MainWindow(QMainWindow):
 
         main_area = QHBoxLayout()
 
-        self.tabs = QTabWidget()
-        self.tabs.setMaximumWidth(360)
-        self._build_tabs()
-        main_area.addWidget(self.tabs)
+        # левая панель: полоса категорий + QTabWidget с скрытым таб-баром
+        left_panel = QWidget()
+        left_panel.setMaximumWidth(380)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(6)
 
+        self.category_bar = CategoryBar(list(CATEGORIES.keys()))
+        left_layout.addWidget(self.category_bar)
+
+        self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()
+        self._build_tabs()
+        left_layout.addWidget(self.tabs, 1)
+
+        self.category_bar.category_selected.connect(self.tabs.setCurrentIndex)
+
+        main_area.addWidget(left_panel)
+
+        # правая часть
         right = QVBoxLayout()
         title = QLabel("Результат выполнения:")
         title.setObjectName("sectionTitle")
@@ -295,7 +396,7 @@ class MainWindow(QMainWindow):
 
     def _build_tabs(self):
         for category, commands in CATEGORIES.items():
-            scroll = QScrollArea()
+            scroll = DragScrollArea()
             scroll.setWidgetResizable(True)
             inner = QWidget()
             v = QVBoxLayout(inner)
@@ -305,9 +406,7 @@ class MainWindow(QMainWindow):
             for cmd in commands:
                 btn = QPushButton(cmd["name"])
                 btn.setToolTip(cmd.get("desc", ""))
-                btn.setObjectName(
-                    "dangerBtn" if cmd.get("dangerous") else "cmdBtn"
-                )
+                btn.setObjectName("dangerBtn" if cmd.get("dangerous") else "cmdBtn")
                 btn.clicked.connect(
                     lambda _=False, c=cmd: self._on_command_clicked(c)
                 )
@@ -322,7 +421,6 @@ class MainWindow(QMainWindow):
         if cmd.get("instant"):
             self._execute(cmd["name"], cmd)
             return
-
         dlg = CommandDialog(cmd, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._execute(dlg.get_command(), cmd)
