@@ -6,9 +6,8 @@ desc             — подсказка
 flags            — список галочек; однобуквенные (-a, -l, …) склеиваются в -al
 arg_placeholder  — подсказка для поля аргумента
 instant          — если True, выполняется без диалога
-dangerous        — если True, реально НЕ выполняется
-sim              — lambda(cmd) -> str, текст «вывода» для опасных
-safe_handler     — имя встроенного безопасного обработчика ("touch", "mkdir", "mv", "cp")
+safe_handler     — имя встроенного безопасного обработчика
+                   ("touch", "mkdir", "mv", "cp", "rm")
 """
 
 import os
@@ -55,6 +54,10 @@ CATEGORIES = {
          "flags": ["-r"],
          "arg_placeholder": "источник назначение (например note.txt notes/copy.txt)",
          "safe_handler": "cp"},
+        {"name": "rm", "desc": "Удалить файл или пустой каталог "
+                               "(только внутри текущей директории, с подтверждением)",
+         "arg_placeholder": "файл или каталог (например note.txt)",
+         "safe_handler": "rm"},
     ],
 
     "Сеть": [
@@ -80,56 +83,6 @@ CATEGORIES = {
         {"name": "uname", "desc": "Информация о ядре",
          "flags": ["-a", "-r", "-s"]},
         {"name": "lscpu", "desc": "Информация о CPU", "instant": True},
-    ],
-
-    "⚠ Опасные": [
-        {"name": "rm -rf /", "desc": "Удаление всей файловой системы",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] rm -rf /\n"
-            "rm: рекурсивное удаление корня '/'\n"
-            "rm: удалено 138 402 файла\n"
-            "[!] Команда заблокирована TEiL."
-         )},
-        {"name": "rm -rf /*", "desc": "Удаление содержимого корня",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] rm -rf /*\n"
-            "rm: удаление /bin /boot /dev /etc /home /lib /usr /var ...\n"
-            "[!] Команда заблокирована TEiL."
-         )},
-        {"name": "dd if=/dev/zero of=/dev/sda", "desc": "Затирание диска нулями",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] dd if=/dev/zero of=/dev/sda\n"
-            "5368709120 байт (5.4 GB) скопировано\n"
-            "[!] Диск /dev/sda был бы полностью уничтожен. TEiL заблокировал команду."
-         )},
-        {"name": "mkfs.ext4 /dev/sda1", "desc": "Форматирование раздела",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] mkfs.ext4 /dev/sda1\n"
-            "[!] Раздел /dev/sda1 был бы отформатирован. Команда заблокирована TEiL."
-         )},
-        {"name": ":(){ :|:& };:", "desc": "Fork-бомба",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] fork-бомба\n"
-            "bash: fork: retry: Resource temporarily unavailable\n"
-            "[!] Система «зависла бы». TEiL заблокировал команду."
-         )},
-        {"name": "chmod -R 000 /", "desc": "Снятие прав со всей системы",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] chmod -R 000 /\n"
-            "[!] Команда заблокирована TEiL."
-         )},
-        {"name": "shutdown -h now", "desc": "Мгновенное выключение",
-         "dangerous": True,
-         "sim": lambda cmd: (
-            "[СИМУЛЯЦИЯ] shutdown -h now\n"
-            "[!] Компьютер был бы выключен. TEiL заблокировал команду."
-         )},
     ],
 }
 
@@ -384,14 +337,116 @@ class CommandExecutor:
             if os.path.isdir(src_abs) and not os.path.islink(src_abs):
                 if not recursive:
                     return f"cp: '{src_arg}': это каталог (отметьте -r)"
-                # symlinks=True — не идём по симлинкам, копируем их как есть
                 shutil.copytree(src_abs, final_dst, symlinks=True)
                 return f"cp: каталог скопирован: {src_arg} -> {dst_arg}"
             else:
-                # follow_symlinks=False — копируем сам симлинк, не его цель
                 shutil.copy2(src_abs, final_dst, follow_symlinks=False)
                 return f"cp: файл скопирован: {src_arg} -> {dst_arg}"
         except PermissionError:
             return f"cp: '{src_arg}': нет прав на копирование"
         except Exception as e:
             return f"cp: ошибка: {e}"
+
+    # ------------------------------------------------ описание цели для подтверждения
+    def describe_target(self, target: str) -> tuple[bool, str]:
+        """
+        Возвращает (можно_удалить, человекочитаемое_описание).
+        Используется GUI для показа диалога подтверждения перед rm.
+        """
+        target = target.strip()
+        if not target:
+            return False, "не указан файл или каталог"
+
+        cwd_real = os.path.realpath(self.cwd)
+        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+
+        if not raw_abs.startswith(cwd_real + os.sep):
+            return False, f"путь вне текущей директории:\n{raw_abs}"
+
+        if raw_abs == cwd_real:
+            return False, "нельзя удалить текущую директорию"
+
+        if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
+            return False, f"нет такого файла или каталога: {target}"
+
+        if os.path.islink(raw_abs):
+            try:
+                pointed = os.readlink(raw_abs)
+            except Exception:
+                pointed = "?"
+            return True, f"символическая ссылка:\n{raw_abs} -> {pointed}"
+
+        if os.path.isfile(raw_abs):
+            try:
+                size = os.path.getsize(raw_abs)
+            except Exception:
+                size = 0
+            return True, f"файл ({self._human_size(size)}):\n{raw_abs}"
+
+        if os.path.isdir(raw_abs):
+            try:
+                items = os.listdir(raw_abs)
+            except Exception:
+                items = []
+            if items:
+                return False, (
+                    f"каталог НЕ пуст ({len(items)} элементов):\n{raw_abs}\n"
+                    f"удаление непустых каталогов запрещено (нет ключа -r)"
+                )
+            return True, f"пустой каталог:\n{raw_abs}"
+
+        return False, f"неизвестный тип файла:\n{raw_abs}"
+
+    @staticmethod
+    def _human_size(n: int) -> str:
+        if n < 1024:
+            return f"{n} B"
+        for unit in ("KB", "MB", "GB", "TB"):
+            n /= 1024
+            if n < 1024:
+                return f"{n:.1f} {unit}"
+        return f"{n:.1f} PB"
+
+    # ------------------------------------------------ безопасный rm (без ключей)
+    def safe_rm(self, target: str) -> str:
+        target = target.strip()
+        if not target:
+            return "rm: не указан файл или каталог"
+
+        cwd_real = os.path.realpath(self.cwd)
+        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+
+        if not raw_abs.startswith(cwd_real + os.sep):
+            return (f"rm: отказ — путь вне текущей директории:\n"
+                    f"    {raw_abs}\n"
+                    f"rm: используйте cd, чтобы перейти в нужный каталог")
+
+        if raw_abs == cwd_real:
+            return "rm: отказ — нельзя удалить текущую директорию"
+
+        if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
+            return f"rm: '{target}': нет такого файла или каталога"
+
+        real_abs = os.path.realpath(raw_abs)
+        if real_abs != raw_abs and not os.path.islink(raw_abs):
+            return (f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области:\n"
+                    f"    {raw_abs} -> {real_abs}")
+
+        try:
+            if os.path.islink(raw_abs) or os.path.isfile(raw_abs):
+                os.unlink(raw_abs)
+                return f"rm: удалён файл: {target}"
+
+            if os.path.isdir(raw_abs):
+                try:
+                    os.rmdir(raw_abs)
+                    return f"rm: удалён пустой каталог: {target}"
+                except OSError:
+                    return (f"rm: '{target}': каталог не пуст\n"
+                            f"rm: удаление непустых каталогов запрещено (нет ключа -r)")
+
+            return f"rm: '{target}': неизвестный тип файла"
+        except PermissionError:
+            return f"rm: '{target}': нет прав на удаление"
+        except Exception as e:
+            return f"rm: ошибка: {e}"

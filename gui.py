@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QScrollArea,
-    QDialog, QCheckBox, QGroupBox, QFrame,
+    QDialog, QCheckBox, QGroupBox, QFrame, QMessageBox,
 )
 from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QTextCursor
@@ -65,13 +65,6 @@ QPushButton#cmdBtn {
 }
 QPushButton#cmdBtn:hover { background-color: #45475a; border: 1px solid #89b4fa; }
 QPushButton#cmdBtn:pressed { background-color: #585b70; }
-QPushButton#dangerBtn {
-    background-color: #3a1e1e; color: #f38ba8;
-    border: 1px solid #f38ba8; border-radius: 4px;
-    padding: 7px 10px; text-align: left; font-weight: bold;
-}
-QPushButton#dangerBtn:hover { background-color: #5a2424; }
-QPushButton#dangerBtn:pressed { background-color: #7a2e2e; }
 QPushButton {
     background-color: #89b4fa; color: #11111b;
     border: none; border-radius: 4px;
@@ -100,6 +93,7 @@ QGroupBox::title {
 }
 QCheckBox { color: #cdd6f4; padding: 2px; }
 QCheckBox::indicator { width: 15px; height: 15px; }
+QMessageBox { background-color: #1e1e2e; }
 """
 
 
@@ -252,8 +246,7 @@ class CommandDialog(QDialog):
         cancel = QPushButton("Отмена")
         cancel.clicked.connect(self.reject)
         btns.addWidget(cancel)
-        ok_text = "Симулировать" if cmd.get("dangerous") else "Выполнить"
-        ok = QPushButton(ok_text)
+        ok = QPushButton("Выполнить")
         ok.setDefault(True)
         ok.clicked.connect(self.accept)
         btns.addWidget(ok)
@@ -306,9 +299,10 @@ class MainWindow(QMainWindow):
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
             "Категории и списки команд перетаскиваются мышкой.\n"
             "Однобуквенные ключи склеиваются: -l + -a + -h → -alh.\n"
-            "touch, mkdir, mv и cp в «Файлы и папки» — безопасные: работают\n"
-            "только внутри текущей директории.\n"
-            "Команды из категории «⚠ Опасные» НЕ выполняются — только симуляция.\n"
+            "touch, mkdir, mv, cp и rm в «Файлы и папки» — безопасные:\n"
+            "работают только внутри текущей директории.\n"
+            "rm удаляет только файлы и пустые каталоги, всегда спрашивая\n"
+            "подтверждение перед удалением.\n"
         )
 
     # ------------------------------------------------------------------ UI
@@ -375,7 +369,7 @@ class MainWindow(QMainWindow):
             for cmd in commands:
                 btn = QPushButton(cmd["name"])
                 btn.setToolTip(cmd.get("desc", ""))
-                btn.setObjectName("dangerBtn" if cmd.get("dangerous") else "cmdBtn")
+                btn.setObjectName("cmdBtn")
                 btn.clicked.connect(
                     lambda _=False, c=cmd: self._on_command_clicked(c)
                 )
@@ -435,6 +429,27 @@ class MainWindow(QMainWindow):
             self._append_output(self.executor.safe_cp(rest, recursive))
             return
 
+        if handler == "rm":
+            target = full_cmd[len("rm"):].strip()
+            ok, info = self.executor.describe_target(target)
+            if not ok:
+                self._append_output(f"rm: отказ — {info}")
+                return
+
+            reply = QMessageBox.warning(
+                self,
+                "TEiL — подтверждение удаления",
+                f"Вы собираетесь удалить:\n\n{info}\n\nПродолжить?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._append_output("rm: отменено пользователем")
+                return
+
+            self._append_output(self.executor.safe_rm(target))
+            return
+
         # 2) cd — меняем директорию
         if cmd["name"] == "cd":
             target = full_cmd[len("cd"):].strip()
@@ -448,15 +463,7 @@ class MainWindow(QMainWindow):
                     self._append_output(err)
             return
 
-        # 3) опасные — только симуляция
-        if cmd.get("dangerous"):
-            sim = cmd["sim"](full_cmd) if callable(cmd.get("sim")) else cmd.get("sim", "")
-            self._append_output(
-                "⚠ ОПАСНАЯ КОМАНДА — реальное выполнение запрещено.\n" + sim
-            )
-            return
-
-        # 4) всё остальное — реальное выполнение
+        # 3) всё остальное — реальное выполнение
         self._append_output(self.executor.execute(full_cmd))
 
     # ------------------------------------------------------------- helpers
