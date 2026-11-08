@@ -40,6 +40,13 @@ CATEGORIES = {
          "arg_placeholder": ". -maxdepth 1 -type f"},
         {"name": "cat", "desc": "Содержимое файла",
          "arg_placeholder": "файл (например /etc/os-release)"},
+        {"name": "head", "desc": "Первые строки файла",
+         "arg_placeholder": "-n 10 файл (по умолчанию 10 строк)"},
+        {"name": "tail", "desc": "Последние строки файла",
+         "arg_placeholder": "-n 10 файл (по умолчанию 10 строк)"},
+        {"name": "grep", "desc": "Поиск по шаблону",
+         "flags": ["-i", "-n", "-r"],
+         "arg_placeholder": "шаблон [файл] (например root /etc/passwd)"},
         {"name": "touch", "desc": "Создать пустой файл (только внутри текущей директории)",
          "arg_placeholder": "имя файла (например note.txt)",
          "safe_handler": "touch"},
@@ -101,6 +108,7 @@ class CommandExecutor:
             result = subprocess.run(
                 cmd, shell=True, cwd=self.cwd,
                 capture_output=True, text=True, timeout=self.TIMEOUT,
+                stdin=subprocess.DEVNULL,
             )
             out = result.stdout
             if result.stderr:
