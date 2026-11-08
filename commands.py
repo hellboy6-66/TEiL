@@ -8,7 +8,7 @@ arg_placeholder  — подсказка для поля аргумента
 instant          — если True, выполняется без диалога
 dangerous        — если True, реально НЕ выполняется
 sim              — lambda(cmd) -> str, текст «вывода» для опасных
-safe_handler     — имя встроенного безопасного обработчика ("touch", "mkdir", "mv")
+safe_handler     — имя встроенного безопасного обработчика ("touch", "mkdir", "mv", "cp")
 """
 
 import os
@@ -51,6 +51,10 @@ CATEGORIES = {
         {"name": "mv", "desc": "Переместить/переименовать (только внутри текущей директории)",
          "arg_placeholder": "источник назначение (например note.txt notes/note.txt)",
          "safe_handler": "mv"},
+        {"name": "cp", "desc": "Копировать (только внутри текущей директории)",
+         "flags": ["-r"],
+         "arg_placeholder": "источник назначение (например note.txt notes/copy.txt)",
+         "safe_handler": "cp"},
     ],
 
     "Сеть": [
@@ -252,64 +256,54 @@ class CommandExecutor:
             os.path.join(cwd_real, os.path.expanduser(dst_arg))
         )
 
-        # 1. Источник внутри cwd
         if not src_abs.startswith(cwd_real + os.sep):
             return (f"mv: отказ — источник вне текущей директории:\n"
                     f"    {src_abs}\n"
                     f"mv: используйте cd, чтобы перейти в нужный каталог")
 
-        # 2. Назначение внутри cwd
         if not dst_abs.startswith(cwd_real + os.sep):
             return (f"mv: отказ — назначение вне текущей директории:\n"
                     f"    {dst_abs}\n"
                     f"mv: используйте cd, чтобы перейти в нужный каталог")
 
-        # 3. Источник существует
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"mv: невозможно переместить '{src_arg}': Нет такого файла или каталога"
 
-        # 4. Источник не совпадает с cwd
         if src_abs == cwd_real:
             return "mv: отказ — нельзя переместить текущую директорию"
 
-        # 5. Источник и назначение не совпадают
         if dst_abs == src_abs:
             return f"mv: '{src_arg}' и '{dst_arg}' — один и тот же путь"
 
         if dst_abs.startswith(src_abs + os.sep):
             return "mv: отказ — нельзя переместить каталог внутрь самого себя"
 
-        # 6. Если назначение — существующий каталог, кладём туда с тем же именем
         if os.path.isdir(dst_abs) and not os.path.islink(dst_abs):
             final_dst = os.path.join(dst_abs, os.path.basename(src_abs))
         else:
             final_dst = dst_abs
 
-        # 7. Не перезаписываем существующие файлы
         if os.path.exists(final_dst) or os.path.islink(final_dst):
             return (f"mv: отказ — назначение уже существует:\n"
                     f"    {final_dst}\n"
                     f"mv: перезапись запрещена. Укажите другое имя или удалите цель")
 
-        # 8. Родитель назначения должен существовать
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
             return (f"mv: не удаётся переместить в '{dst_arg}': "
                     f"Нет такого каталога: {dst_parent}")
 
-        # 9. Симлинк источника, ведущий наружу, запрещён
         src_real = os.path.realpath(src_abs)
         if src_real != src_abs and not os.path.islink(src_abs):
             return (f"mv: отказ — источник содержит симлинк наружу:\n"
                     f"    {src_abs} -> {src_real}")
 
-        # 10. Перемещение
         try:
             os.rename(src_abs, final_dst)
             if os.path.isdir(dst_abs) and not os.path.islink(dst_abs) and dst_abs != final_dst:
                 return f"mv: '{src_arg}' -> '{os.path.relpath(final_dst, cwd_real)}'"
             return f"mv: перемещено: {src_arg} -> {dst_arg}"
-        except OSError as e:
+        except OSError:
             try:
                 import shutil
                 shutil.move(src_abs, final_dst)
@@ -320,3 +314,84 @@ class CommandExecutor:
             return f"mv: '{src_arg}': нет прав на перемещение"
         except Exception as e:
             return f"mv: ошибка: {e}"
+
+    # ------------------------------------------------ безопасный cp
+    def safe_cp(self, args: str, recursive: bool) -> str:
+        args = args.strip()
+        if not args:
+            return "cp: не указаны источник и назначение"
+
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return ("cp: недостаточно аргументов\n"
+                    "cp: укажите источник и назначение через пробел, "
+                    "например: note.txt notes/copy.txt")
+
+        src_arg, dst_arg = parts[0], parts[1].strip()
+        if not dst_arg:
+            return "cp: не указано назначение"
+
+        cwd_real = os.path.realpath(self.cwd)
+
+        src_abs = os.path.normpath(
+            os.path.join(cwd_real, os.path.expanduser(src_arg))
+        )
+        dst_abs = os.path.normpath(
+            os.path.join(cwd_real, os.path.expanduser(dst_arg))
+        )
+
+        if not src_abs.startswith(cwd_real + os.sep):
+            return (f"cp: отказ — источник вне текущей директории:\n"
+                    f"    {src_abs}\n"
+                    f"cp: используйте cd, чтобы перейти в нужный каталог")
+
+        if not dst_abs.startswith(cwd_real + os.sep):
+            return (f"cp: отказ — назначение вне текущей директории:\n"
+                    f"    {dst_abs}\n"
+                    f"cp: используйте cd, чтобы перейти в нужный каталог")
+
+        if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
+            return f"cp: невозможно скопировать '{src_arg}': Нет такого файла или каталога"
+
+        if dst_abs == src_abs:
+            return f"cp: '{src_arg}' и '{dst_arg}' — один и тот же путь"
+
+        if dst_abs.startswith(src_abs + os.sep):
+            return "cp: отказ — нельзя скопировать каталог внутрь самого себя"
+
+        if os.path.isdir(dst_abs) and not os.path.islink(dst_abs):
+            final_dst = os.path.join(dst_abs, os.path.basename(src_abs))
+        else:
+            final_dst = dst_abs
+
+        if os.path.exists(final_dst) or os.path.islink(final_dst):
+            return (f"cp: отказ — назначение уже существует:\n"
+                    f"    {final_dst}\n"
+                    f"cp: перезапись запрещена. Укажите другое имя или удалите цель")
+
+        dst_parent = os.path.dirname(final_dst)
+        if not os.path.isdir(dst_parent):
+            return (f"cp: не удаётся скопировать в '{dst_arg}': "
+                    f"Нет такого каталога: {dst_parent}")
+
+        src_real = os.path.realpath(src_abs)
+        if src_real != src_abs and not os.path.islink(src_abs):
+            return (f"cp: отказ — источник содержит симлинк наружу:\n"
+                    f"    {src_abs} -> {src_real}")
+
+        try:
+            import shutil
+            if os.path.isdir(src_abs) and not os.path.islink(src_abs):
+                if not recursive:
+                    return f"cp: '{src_arg}': это каталог (отметьте -r)"
+                # symlinks=True — не идём по симлинкам, копируем их как есть
+                shutil.copytree(src_abs, final_dst, symlinks=True)
+                return f"cp: каталог скопирован: {src_arg} -> {dst_arg}"
+            else:
+                # follow_symlinks=False — копируем сам симлинк, не его цель
+                shutil.copy2(src_abs, final_dst, follow_symlinks=False)
+                return f"cp: файл скопирован: {src_arg} -> {dst_arg}"
+        except PermissionError:
+            return f"cp: '{src_arg}': нет прав на копирование"
+        except Exception as e:
+            return f"cp: ошибка: {e}"
