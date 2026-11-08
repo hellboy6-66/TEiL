@@ -306,7 +306,7 @@ class MainWindow(QMainWindow):
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
             "Категории и списки команд перетаскиваются мышкой.\n"
             "Однобуквенные ключи склеиваются: -l + -a + -h → -alh.\n"
-            "touch в «Файлы и папки» — безопасный: создаёт файл только\n"
+            "touch, mkdir и mv в «Файлы и папки» — безопасные: работают только\n"
             "внутри текущей директории.\n"
             "Команды из категории «⚠ Опасные» НЕ выполняются — только симуляция.\n"
         )
@@ -399,9 +399,28 @@ class MainWindow(QMainWindow):
 
         # 1) безопасные встроенные обработчики
         handler = cmd.get("safe_handler")
+
         if handler == "touch":
             target = full_cmd[len("touch"):].strip()
             self._append_output(self.executor.safe_touch(target))
+            return
+
+        if handler == "mkdir":
+            rest = full_cmd[len("mkdir"):].strip()
+            parents = False
+            target = rest
+            if rest.startswith("-"):
+                parts = rest.split(None, 1)
+                flag = parts[0]
+                if "p" in flag:
+                    parents = True
+                target = parts[1] if len(parts) > 1 else ""
+            self._append_output(self.executor.safe_mkdir(target, parents))
+            return
+
+        if handler == "mv":
+            rest = full_cmd[len("mv"):].strip()
+            self._append_output(self.executor.safe_mv(rest))
             return
 
         # 2) cd — меняем директорию
