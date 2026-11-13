@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QScrollArea,
     QDialog, QCheckBox, QGroupBox, QFrame, QMessageBox, QTextBrowser,
-    QApplication
+    QApplication, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QEvent, pyqtSignal
 from PyQt6.QtGui import QTextCursor
@@ -325,7 +325,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
         self.resize(1150, 720)
         
-        # Загружаем тему из файла (по умолчанию False - темная)
         self.is_light_theme = self.load_theme_setting()
         self.apply_theme()
 
@@ -335,12 +334,11 @@ class MainWindow(QMainWindow):
 
         self._append_output(
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Вы можете изменить тему оформления и открыть полный справочник\n"
-            "по командам в меню «⚙ Настройки» (справа вверху).\n"
+            "Используйте строку поиска, чтобы быстро находить нужные команды.\n"
+            "Настройки (тема и справочник) доступны в меню справа вверху.\n"
         )
 
     def load_theme_setting(self) -> bool:
-        """Читает настройки темы из JSON-файла."""
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -351,7 +349,6 @@ class MainWindow(QMainWindow):
         return False
 
     def save_theme_setting(self):
-        """Записывает настройки темы в JSON-файл."""
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump({"is_light_theme": self.is_light_theme}, f, indent=4)
@@ -389,14 +386,43 @@ class MainWindow(QMainWindow):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
 
+        # --- Поиск команд ---
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("🔍 Поиск команд...")
+        self.search_input.textChanged.connect(self._on_search)
+        left_layout.addWidget(self.search_input)
+
+        # --- Стек: Обычные вкладки или Результаты поиска ---
+        self.stack = QStackedWidget()
+
+        # Страница 0: Обычные вкладки
+        tabs_page = QWidget()
+        tabs_layout = QVBoxLayout(tabs_page)
+        tabs_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_layout.setSpacing(6)
+
         self.category_bar = CategoryBar(list(CATEGORIES.keys()))
-        left_layout.addWidget(self.category_bar)
+        tabs_layout.addWidget(self.category_bar)
 
         self.tabs = QTabWidget()
         self.tabs.tabBar().hide()
         self._build_tabs()
-        left_layout.addWidget(self.tabs, 1)
+        tabs_layout.addWidget(self.tabs, 1)
+        
         self.category_bar.category_selected.connect(self.tabs.setCurrentIndex)
+        self.stack.addWidget(tabs_page)
+
+        # Страница 1: Результаты поиска
+        self.search_scroll = DragScrollArea()
+        self.search_scroll.setWidgetResizable(True)
+        self.search_container = QWidget()
+        self.search_layout = QVBoxLayout(self.search_container)
+        self.search_layout.setSpacing(6)
+        self.search_layout.setContentsMargins(6, 6, 6, 6)
+        self.search_scroll.setWidget(self.search_container)
+        self.stack.addWidget(self.search_scroll)
+
+        left_layout.addWidget(self.stack, 1)
         main_area.addWidget(left_panel)
 
         right = QVBoxLayout()
@@ -416,6 +442,52 @@ class MainWindow(QMainWindow):
         main_area.addLayout(right, 1)
         root.addLayout(main_area, 1)
 
+    def _create_command_button(self, cmd: dict) -> QPushButton:
+        btn = QPushButton(cmd["name"])
+        btn.setToolTip(cmd.get("desc", ""))
+        btn.setObjectName("cmdBtn")
+        btn.clicked.connect(lambda _=False, c=cmd: self._on_command_clicked(c))
+        return btn
+
+    def _on_search(self, text: str):
+        text = text.strip().lower()
+        
+        # Если поиск пуст, показываем обычные вкладки
+        if not text:
+            self.stack.setCurrentIndex(0)
+            return
+
+        self.stack.setCurrentIndex(1)
+
+        # --- ИСПРАВЛЕНИЕ: Полная очистка layout ---
+        while self.search_layout.count():
+            item = self.search_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        # ------------------------------------------
+
+        found = False
+        for category, commands in CATEGORIES.items():
+            for cmd in commands:
+                name = cmd["name"].lower()
+                desc = cmd.get("desc", "").lower()
+                if text in name or text in desc:
+                    btn = self._create_command_button(cmd)
+                    self.search_layout.addWidget(btn)
+                    found = True
+
+        if not found:
+            lbl = QLabel("Ничего не найдено")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.search_layout.addWidget(lbl)
+
+        # Добавляем растяжку, чтобы кнопки прижимались к верху
+        self.search_layout.addStretch()
+        
+        # Прокручиваем результат в самый верх
+        self.search_scroll.verticalScrollBar().setValue(0)
+
     def _open_settings(self):
         dlg = SettingsDialog(self.is_light_theme, self)
         dlg.theme_changed.connect(self._change_theme)
@@ -424,7 +496,7 @@ class MainWindow(QMainWindow):
     def _change_theme(self, is_light: bool):
         self.is_light_theme = is_light
         self.apply_theme()
-        self.save_theme_setting() # Сохраняем при каждом изменении
+        self.save_theme_setting()
 
     def _build_tabs(self):
         for category, commands in CATEGORIES.items():
@@ -435,10 +507,7 @@ class MainWindow(QMainWindow):
             v.setSpacing(6)
             v.setContentsMargins(6, 6, 6, 6)
             for cmd in commands:
-                btn = QPushButton(cmd["name"])
-                btn.setToolTip(cmd.get("desc", ""))
-                btn.setObjectName("cmdBtn")
-                btn.clicked.connect(lambda _=False, c=cmd: self._on_command_clicked(c))
+                btn = self._create_command_button(cmd)
                 v.addWidget(btn)
             v.addStretch(1)
             scroll.setWidget(inner)
