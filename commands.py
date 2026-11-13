@@ -1,17 +1,10 @@
 """
 Каталог команд TEiL и исполнитель безопасных команд.
-
-name             — имя (без флагов)
-desc             — подсказка
-flags            — список галочек; однобуквенные (-a, -l, …) склеиваются в -al
-arg_placeholder  — подсказка для поля аргумента
-instant          — если True, выполняется без диалога
-safe_handler     — имя встроенного безопасного обработчика
-                   ("touch", "mkdir", "mv", "cp", "rm")
 """
 
 import os
 import re
+import shlex
 import subprocess
 
 
@@ -122,6 +115,14 @@ class CommandExecutor:
     def __init__(self, start_dir: str | None = None):
         self.cwd = start_dir or os.path.expanduser("~")
 
+    # ------------------------------------------------ парсинг аргументов
+    def _parse_args(self, arg_str: str) -> list[str]:
+        """Безопасно разбивает строку на аргументы, учитывая кавычки."""
+        try:
+            return shlex.split(arg_str)
+        except ValueError:
+            return arg_str.split()
+
     # ------------------------------------------------ обычное выполнение
     def execute(self, cmd: str) -> str:
         try:
@@ -143,7 +144,12 @@ class CommandExecutor:
 
     # ------------------------------------------------ смена директории
     def change_dir(self, path: str) -> tuple[bool, str]:
-        path = os.path.expanduser(path.strip())
+        parts = self._parse_args(path)
+        if not parts:
+            return False, "cd: не указан каталог"
+        path = parts[0]
+        
+        path = os.path.expanduser(path)
         new = path if os.path.isabs(path) else os.path.join(self.cwd, path)
         new = os.path.normpath(new)
         if os.path.isdir(new):
@@ -151,7 +157,7 @@ class CommandExecutor:
             return True, ""
         return False, f"cd: нет такого каталога: {path}"
 
-    # ------------------------------------------------ эмуляция фигурных скобок (Brace Expansion)
+    # ------------------------------------------------ эмуляция фигурных скобок
     def _expand_braces(self, text: str) -> list[str]:
         match = re.search(r'\{([^{}]+)\}', text)
         if not match:
@@ -183,16 +189,13 @@ class CommandExecutor:
             results.extend(self._expand_braces(new_text))
         return results
 
-    # ------------------------------------------------ безопасный touch (мульти-режим)
+    # ------------------------------------------------ безопасный touch
     def safe_touch(self, target: str) -> str:
-        target = target.strip()
-        if not target:
+        raw_tokens = self._parse_args(target)
+        if not raw_tokens:
             return "touch: не указан файл"
 
-        raw_tokens = target.split()
         final_targets = []
-
-        # Раскрываем фигурные скобки
         for token in raw_tokens:
             final_targets.extend(self._expand_braces(token))
 
@@ -200,7 +203,6 @@ class CommandExecutor:
         success_count = 0
         errors = []
 
-        # Создаем файлы
         for t in final_targets:
             raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(t)))
 
@@ -233,10 +235,13 @@ class CommandExecutor:
 
     # ------------------------------------------------ безопасный mkdir
     def safe_mkdir(self, target: str, parents: bool) -> str:
-        target = target.strip()
-        if not target:
+        parts = self._parse_args(target)
+        if not parts:
             return "mkdir: не указан каталог"
-
+        if len(parts) > 1:
+            return "mkdir: одновременное создание нескольких каталогов не поддерживается"
+        
+        target = parts[0]
         cwd_real = os.path.realpath(self.cwd)
         raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
 
@@ -267,48 +272,26 @@ class CommandExecutor:
 
     # ------------------------------------------------ безопасный mv
     def safe_mv(self, args: str) -> str:
-        args = args.strip()
-        if not args:
-            return "mv: не указаны источник и назначение"
+        parts = self._parse_args(args)
+        if len(parts) != 2:
+            return ("mv: укажите ровно два аргумента (источник и назначение)\n"
+                    "например: mv \"my file.txt\" notes/")
 
-        parts = args.split(None, 1)
-        if len(parts) < 2:
-            return ("mv: недостаточно аргументов\n"
-                    "mv: укажите источник и назначение через пробел, "
-                    "например: note.txt notes/note.txt")
-
-        src_arg, dst_arg = parts[0], parts[1].strip()
-        if not dst_arg:
-            return "mv: не указано назначение"
-
+        src_arg, dst_arg = parts[0], parts[1]
         cwd_real = os.path.realpath(self.cwd)
-
-        src_abs = os.path.normpath(
-            os.path.join(cwd_real, os.path.expanduser(src_arg))
-        )
-        dst_abs = os.path.normpath(
-            os.path.join(cwd_real, os.path.expanduser(dst_arg))
-        )
+        src_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(src_arg)))
+        dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
 
         if not src_abs.startswith(cwd_real + os.sep):
-            return (f"mv: отказ — источник вне текущей директории:\n"
-                    f"    {src_abs}\n"
-                    f"mv: используйте cd, чтобы перейти в нужный каталог")
-
+            return f"mv: отказ — источник вне текущей директории:\n    {src_abs}"
         if not dst_abs.startswith(cwd_real + os.sep):
-            return (f"mv: отказ — назначение вне текущей директории:\n"
-                    f"    {dst_abs}\n"
-                    f"mv: используйте cd, чтобы перейти в нужный каталог")
-
+            return f"mv: отказ — назначение вне текущей директории:\n    {dst_abs}"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"mv: невозможно переместить '{src_arg}': Нет такого файла или каталога"
-
         if src_abs == cwd_real:
             return "mv: отказ — нельзя переместить текущую директорию"
-
         if dst_abs == src_abs:
             return f"mv: '{src_arg}' и '{dst_arg}' — один и тот же путь"
-
         if dst_abs.startswith(src_abs + os.sep):
             return "mv: отказ — нельзя переместить каталог внутрь самого себя"
 
@@ -318,19 +301,15 @@ class CommandExecutor:
             final_dst = dst_abs
 
         if os.path.exists(final_dst) or os.path.islink(final_dst):
-            return (f"mv: отказ — назначение уже существует:\n"
-                    f"    {final_dst}\n"
-                    f"mv: перезапись запрещена. Укажите другое имя или удалите цель")
+            return f"mv: отказ — назначение уже существует:\n    {final_dst}"
 
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
-            return (f"mv: не удаётся переместить в '{dst_arg}': "
-                    f"Нет такого каталога: {dst_parent}")
+            return f"mv: не удаётся переместить в '{dst_arg}': Нет такого каталога: {dst_parent}"
 
         src_real = os.path.realpath(src_abs)
         if src_real != src_abs and not os.path.islink(src_abs):
-            return (f"mv: отказ — источник содержит симлинк наружу:\n"
-                    f"    {src_abs} -> {src_real}")
+            return f"mv: отказ — источник содержит симлинк наружу:\n    {src_abs} -> {src_real}"
 
         try:
             os.rename(src_abs, final_dst)
@@ -351,45 +330,24 @@ class CommandExecutor:
 
     # ------------------------------------------------ безопасный cp
     def safe_cp(self, args: str, recursive: bool) -> str:
-        args = args.strip()
-        if not args:
-            return "cp: не указаны источник и назначение"
+        parts = self._parse_args(args)
+        if len(parts) != 2:
+            return ("cp: укажите ровно два аргумента (источник и назначение)\n"
+                    "например: cp \"my file.txt\" copy.txt")
 
-        parts = args.split(None, 1)
-        if len(parts) < 2:
-            return ("cp: недостаточно аргументов\n"
-                    "cp: укажите источник и назначение через пробел, "
-                    "например: note.txt notes/copy.txt")
-
-        src_arg, dst_arg = parts[0], parts[1].strip()
-        if not dst_arg:
-            return "cp: не указано назначение"
-
+        src_arg, dst_arg = parts[0], parts[1]
         cwd_real = os.path.realpath(self.cwd)
-
-        src_abs = os.path.normpath(
-            os.path.join(cwd_real, os.path.expanduser(src_arg))
-        )
-        dst_abs = os.path.normpath(
-            os.path.join(cwd_real, os.path.expanduser(dst_arg))
-        )
+        src_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(src_arg)))
+        dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
 
         if not src_abs.startswith(cwd_real + os.sep):
-            return (f"cp: отказ — источник вне текущей директории:\n"
-                    f"    {src_abs}\n"
-                    f"cp: используйте cd, чтобы перейти в нужный каталог")
-
+            return f"cp: отказ — источник вне текущей директории:\n    {src_abs}"
         if not dst_abs.startswith(cwd_real + os.sep):
-            return (f"cp: отказ — назначение вне текущей директории:\n"
-                    f"    {dst_abs}\n"
-                    f"cp: используйте cd, чтобы перейти в нужный каталог")
-
+            return f"cp: отказ — назначение вне текущей директории:\n    {dst_abs}"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"cp: невозможно скопировать '{src_arg}': Нет такого файла или каталога"
-
         if dst_abs == src_abs:
             return f"cp: '{src_arg}' и '{dst_arg}' — один и тот же путь"
-
         if dst_abs.startswith(src_abs + os.sep):
             return "cp: отказ — нельзя скопировать каталог внутрь самого себя"
 
@@ -399,19 +357,15 @@ class CommandExecutor:
             final_dst = dst_abs
 
         if os.path.exists(final_dst) or os.path.islink(final_dst):
-            return (f"cp: отказ — назначение уже существует:\n"
-                    f"    {final_dst}\n"
-                    f"cp: перезапись запрещена. Укажите другое имя или удалите цель")
+            return f"cp: отказ — назначение уже существует:\n    {final_dst}"
 
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
-            return (f"cp: не удаётся скопировать в '{dst_arg}': "
-                    f"Нет такого каталога: {dst_parent}")
+            return f"cp: не удаётся скопировать в '{dst_arg}': Нет такого каталога: {dst_parent}"
 
         src_real = os.path.realpath(src_abs)
         if src_real != src_abs and not os.path.islink(src_abs):
-            return (f"cp: отказ — источник содержит симлинк наружу:\n"
-                    f"    {src_abs} -> {src_real}")
+            return f"cp: отказ — источник содержит симлинк наружу:\n    {src_abs} -> {src_real}"
 
         try:
             import shutil
@@ -428,21 +382,22 @@ class CommandExecutor:
         except Exception as e:
             return f"cp: ошибка: {e}"
 
-    # ------------------------------------------------ описание цели для подтверждения
+    # ------------------------------------------------ описание цели для rm
     def describe_target(self, target: str) -> tuple[bool, str]:
-        target = target.strip()
-        if not target:
+        parts = self._parse_args(target)
+        if len(parts) == 0:
             return False, "не указан файл или каталог"
-
+        if len(parts) > 1:
+            return False, "удаление нескольких объектов одновременно запрещено"
+            
+        target = parts[0]
         cwd_real = os.path.realpath(self.cwd)
         raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
 
         if not raw_abs.startswith(cwd_real + os.sep):
             return False, f"путь вне текущей директории:\n{raw_abs}"
-
         if raw_abs == cwd_real:
             return False, "нельзя удалить текущую директорию"
-
         if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
             return False, f"нет такого файла или каталога: {target}"
 
@@ -468,7 +423,7 @@ class CommandExecutor:
             if items:
                 return False, (
                     f"каталог НЕ пуст ({len(items)} элементов):\n{raw_abs}\n"
-                    f"удаление непустых каталогов запрещено (нет ключа -r)"
+                    f"удаление непустых каталогов запрещено"
                 )
             return True, f"пустой каталог:\n{raw_abs}"
 
@@ -476,52 +431,45 @@ class CommandExecutor:
 
     @staticmethod
     def _human_size(n: int) -> str:
-        if n < 1024:
-            return f"{n} B"
+        if n < 1024: return f"{n} B"
         for unit in ("KB", "MB", "GB", "TB"):
             n /= 1024
-            if n < 1024:
-                return f"{n:.1f} {unit}"
+            if n < 1024: return f"{n:.1f} {unit}"
         return f"{n:.1f} PB"
 
-    # ------------------------------------------------ безопасный rm (без ключей)
+    # ------------------------------------------------ безопасный rm
     def safe_rm(self, target: str) -> str:
-        target = target.strip()
-        if not target:
+        parts = self._parse_args(target)
+        if len(parts) == 0:
             return "rm: не указан файл или каталог"
-
+        if len(parts) > 1:
+            return "rm: удаление нескольких объектов одновременно запрещено"
+            
+        target = parts[0]
         cwd_real = os.path.realpath(self.cwd)
         raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
 
         if not raw_abs.startswith(cwd_real + os.sep):
-            return (f"rm: отказ — путь вне текущей директории:\n"
-                    f"    {raw_abs}\n"
-                    f"rm: используйте cd, чтобы перейти в нужный каталог")
-
+            return f"rm: отказ — путь вне текущей директории:\n    {raw_abs}"
         if raw_abs == cwd_real:
             return "rm: отказ — нельзя удалить текущую директорию"
-
         if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
             return f"rm: '{target}': нет такого файла или каталога"
 
         real_abs = os.path.realpath(raw_abs)
         if real_abs != raw_abs and not os.path.islink(raw_abs):
-            return (f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области:\n"
-                    f"    {raw_abs} -> {real_abs}")
+            return f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области:\n    {raw_abs} -> {real_abs}"
 
         try:
             if os.path.islink(raw_abs) or os.path.isfile(raw_abs):
                 os.unlink(raw_abs)
                 return f"rm: удалён файл: {target}"
-
             if os.path.isdir(raw_abs):
                 try:
                     os.rmdir(raw_abs)
                     return f"rm: удалён пустой каталог: {target}"
                 except OSError:
-                    return (f"rm: '{target}': каталог не пуст\n"
-                            f"rm: удаление непустых каталогов запрещено (нет ключа -r)")
-
+                    return f"rm: '{target}': каталог не пуст. Удаление непустых каталогов запрещено"
             return f"rm: '{target}': неизвестный тип файла"
         except PermissionError:
             return f"rm: '{target}': нет прав на удаление"
