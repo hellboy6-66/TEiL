@@ -38,6 +38,19 @@ CATEGORIES = {
          "arg_placeholder": "путь"},
         {"name": "find", "desc": "Поиск файлов",
          "arg_placeholder": ". -maxdepth 1 -type f"},
+        
+        # --- Ключи добавлены ---
+        {"name": "file", "desc": "Определить тип файла по содержимому",
+         "flags": ["-b", "-i", "-L"],
+         "arg_placeholder": "файл (например note.txt)"},
+        {"name": "stat", "desc": "Подробная информация о файле (права, дата, размер)",
+         "flags": ["-t", "-f", "-L"],
+         "arg_placeholder": "файл (например note.txt)"},
+        {"name": "which", "desc": "Показать путь к исполняемому файлу команды",
+         "flags": ["-a"],
+         "arg_placeholder": "команда (например ls)"},
+        # -----------------------
+
         {"name": "cat", "desc": "Содержимое файла",
          "arg_placeholder": "файл (например /etc/os-release)"},
         {"name": "head", "desc": "Первые строки файла",
