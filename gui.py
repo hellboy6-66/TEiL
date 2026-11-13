@@ -1,5 +1,7 @@
 """GUI приложения TEiL."""
 
+import os
+import json
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QScrollArea,
@@ -11,6 +13,9 @@ from PyQt6.QtGui import QTextCursor
 
 from commands import CATEGORIES, CommandExecutor
 from manual import MANUAL_DATA
+
+# Путь к файлу настроек (создастся в папке с программой)
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "teili_config.json")
 
 
 DARK_STYLESHEET = """
@@ -251,7 +256,6 @@ class HelpDialog(QDialog):
         layout = QVBoxLayout(self)
 
         browser = QTextBrowser()
-        # Формируем HTML-текст для красивого отображения
         html = "<html><body style='font-family: Consolas, monospace; font-size: 14px;'>"
         for block in MANUAL_DATA:
             html += f"<h2 style='color: #89b4fa;'>{block['category']}</h2><ul>"
@@ -273,7 +277,7 @@ class HelpDialog(QDialog):
 
 class SettingsDialog(QDialog):
     """Окно настроек приложения."""
-    theme_changed = pyqtSignal(bool)  # True если светлая, False если темная
+    theme_changed = pyqtSignal(bool)
 
     def __init__(self, is_light: bool, parent=None):
         super().__init__(parent)
@@ -282,7 +286,6 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Блок темы
         theme_group = QGroupBox("Оформление")
         tl = QVBoxLayout(theme_group)
         self.light_cb = QCheckBox("Светлая тема")
@@ -291,7 +294,6 @@ class SettingsDialog(QDialog):
         tl.addWidget(self.light_cb)
         layout.addWidget(theme_group)
 
-        # Блок справки
         help_group = QGroupBox("Помощь")
         hl = QVBoxLayout(help_group)
         btn_manual = QPushButton("Открыть справочник команд")
@@ -323,7 +325,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
         self.resize(1150, 720)
         
-        self.is_light_theme = False
+        # Загружаем тему из файла (по умолчанию False - темная)
+        self.is_light_theme = self.load_theme_setting()
         self.apply_theme()
 
         self.executor = CommandExecutor()
@@ -335,6 +338,25 @@ class MainWindow(QMainWindow):
             "Вы можете изменить тему оформления и открыть полный справочник\n"
             "по командам в меню «⚙ Настройки» (справа вверху).\n"
         )
+
+    def load_theme_setting(self) -> bool:
+        """Читает настройки темы из JSON-файла."""
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data.get("is_light_theme", False)
+            except Exception:
+                return False
+        return False
+
+    def save_theme_setting(self):
+        """Записывает настройки темы в JSON-файл."""
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump({"is_light_theme": self.is_light_theme}, f, indent=4)
+        except Exception as e:
+            print(f"Не удалось сохранить настройки: {e}")
 
     def apply_theme(self):
         app = QApplication.instance()
@@ -348,14 +370,12 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # --- Шапка ---
         header = QHBoxLayout()
         header.addWidget(QLabel("Текущая директория:"))
         self.cwd_label = QLabel()
         self.cwd_label.setObjectName("cwdLabel")
         header.addWidget(self.cwd_label, 1)
         
-        # Кнопка настроек
         btn_settings = QPushButton("⚙ Настройки")
         btn_settings.clicked.connect(self._open_settings)
         header.addWidget(btn_settings)
@@ -404,6 +424,7 @@ class MainWindow(QMainWindow):
     def _change_theme(self, is_light: bool):
         self.is_light_theme = is_light
         self.apply_theme()
+        self.save_theme_setting() # Сохраняем при каждом изменении
 
     def _build_tabs(self):
         for category, commands in CATEGORIES.items():
