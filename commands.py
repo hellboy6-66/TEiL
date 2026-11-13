@@ -11,6 +11,7 @@ safe_handler     — имя встроенного безопасного обр
 """
 
 import os
+import re
 import subprocess
 
 
@@ -38,8 +39,6 @@ CATEGORIES = {
          "arg_placeholder": "путь"},
         {"name": "find", "desc": "Поиск файлов",
          "arg_placeholder": ". -maxdepth 1 -type f"},
-        
-        # --- Ключи добавлены ---
         {"name": "file", "desc": "Определить тип файла по содержимому",
          "flags": ["-b", "-i", "-L"],
          "arg_placeholder": "файл (например note.txt)"},
@@ -49,8 +48,6 @@ CATEGORIES = {
         {"name": "which", "desc": "Показать путь к исполняемому файлу команды",
          "flags": ["-a"],
          "arg_placeholder": "команда (например ls)"},
-        # -----------------------
-
         {"name": "cat", "desc": "Содержимое файла",
          "arg_placeholder": "файл (например /etc/os-release)"},
         {"name": "head", "desc": "Первые строки файла",
@@ -70,8 +67,8 @@ CATEGORIES = {
          "arg_placeholder": "файл (например sorted.txt)"},
         {"name": "cut", "desc": "Вырезание колонок из текста (укажите разделитель и номер колонки)",
          "arg_placeholder": "-d ' ' -f 1 файл.txt (разделитель и поле)"},
-        {"name": "touch", "desc": "Создать пустой файл (только внутри текущей директории)",
-         "arg_placeholder": "имя файла (например note.txt)",
+        {"name": "touch", "desc": "Создать пустой файл (поддерживает скобки {1..3})",
+         "arg_placeholder": "имя файла (например file{1..3}.txt)",
          "safe_handler": "touch"},
         {"name": "mkdir", "desc": "Создать каталог (только внутри текущей директории)",
          "flags": ["-p"],
@@ -154,32 +151,85 @@ class CommandExecutor:
             return True, ""
         return False, f"cd: нет такого каталога: {path}"
 
-    # ------------------------------------------------ безопасный touch
+    # ------------------------------------------------ эмуляция фигурных скобок (Brace Expansion)
+    def _expand_braces(self, text: str) -> list[str]:
+        match = re.search(r'\{([^{}]+)\}', text)
+        if not match:
+            return [text]
+        
+        content = match.group(1)
+        start, end = match.span()
+        items = []
+        
+        if '..' in content:
+            parts = content.split('..')
+            if len(parts) == 2:
+                p1, p2 = parts[0].strip(), parts[1].strip()
+                if p1.isdigit() and p2.isdigit():
+                    step = 1 if int(p1) <= int(p2) else -1
+                    items = [str(i) for i in range(int(p1), int(p2) + step, step)]
+                elif len(p1) == 1 and len(p2) == 1 and p1.isalpha() and p2.isalpha():
+                    step = 1 if ord(p1) <= ord(p2) else -1
+                    items = [chr(c) for c in range(ord(p1), ord(p2) + step, step)]
+        else:
+            items = content.split(',')
+            
+        if not items:
+            return [text]
+            
+        results = []
+        for item in items:
+            new_text = text[:start] + item + text[end:]
+            results.extend(self._expand_braces(new_text))
+        return results
+
+    # ------------------------------------------------ безопасный touch (мульти-режим)
     def safe_touch(self, target: str) -> str:
         target = target.strip()
         if not target:
             return "touch: не указан файл"
 
+        raw_tokens = target.split()
+        final_targets = []
+
+        # Раскрываем фигурные скобки
+        for token in raw_tokens:
+            final_targets.extend(self._expand_braces(token))
+
         cwd_real = os.path.realpath(self.cwd)
-        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+        success_count = 0
+        errors = []
 
-        if not raw_abs.startswith(cwd_real + os.sep):
-            return (f"touch: отказ — путь вне текущей директории:\n"
-                    f"    {raw_abs}\n"
-                    f"touch: используйте cd, чтобы перейти в нужный каталог")
+        # Создаем файлы
+        for t in final_targets:
+            raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(t)))
 
-        try:
-            parent = os.path.dirname(raw_abs)
-            if not os.path.isdir(parent):
-                return f"touch: нет такого каталога: {parent}"
-            with open(raw_abs, "a"):
-                pass
-            os.utime(raw_abs, None)
-            return f"touch: файл создан/обновлён: {target}"
-        except PermissionError:
-            return f"touch: '{target}': нет прав на запись"
-        except Exception as e:
-            return f"touch: ошибка: {e}"
+            if not raw_abs.startswith(cwd_real + os.sep):
+                errors.append(f"touch: отказ для '{t}' — путь вне текущей директории")
+                continue
+
+            try:
+                parent = os.path.dirname(raw_abs)
+                if not os.path.isdir(parent):
+                    errors.append(f"touch: нет такого каталога для '{t}': {parent}")
+                    continue
+                
+                with open(raw_abs, "a"):
+                    pass
+                os.utime(raw_abs, None)
+                success_count += 1
+            except PermissionError:
+                errors.append(f"touch: '{t}': нет прав на запись")
+            except Exception as e:
+                errors.append(f"touch: ошибка при создании '{t}': {e}")
+
+        result = []
+        if success_count > 0:
+            result.append(f"touch: успешно создано/обновлено файлов: {success_count}")
+        if errors:
+            result.extend(errors)
+            
+        return "\n".join(result)
 
     # ------------------------------------------------ безопасный mkdir
     def safe_mkdir(self, target: str, parents: bool) -> str:
@@ -380,10 +430,6 @@ class CommandExecutor:
 
     # ------------------------------------------------ описание цели для подтверждения
     def describe_target(self, target: str) -> tuple[bool, str]:
-        """
-        Возвращает (можно_удалить, человекочитаемое_описание).
-        Используется GUI для показа диалога подтверждения перед rm.
-        """
         target = target.strip()
         if not target:
             return False, "не указан файл или каталог"

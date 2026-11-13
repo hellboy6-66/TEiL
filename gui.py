@@ -334,7 +334,8 @@ class MainWindow(QMainWindow):
 
         self._append_output(
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Используйте строку поиска, чтобы быстро находить нужные команды.\n"
+            "Вы можете нажимать кнопки слева или вводить команды вручную\n"
+            "в строке внизу (доступны только команды из меню).\n"
             "Настройки (тема и справочник) доступны в меню справа вверху.\n"
         )
 
@@ -425,6 +426,7 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.stack, 1)
         main_area.addWidget(left_panel)
 
+        # --- Правая панель ---
         right = QVBoxLayout()
         title = QLabel("Результат выполнения:")
         title.setObjectName("sectionTitle")
@@ -434,6 +436,12 @@ class MainWindow(QMainWindow):
         self.output.setObjectName("output")
         self.output.setReadOnly(True)
         right.addWidget(self.output, 1)
+
+        # --- Ручной ввод команд ---
+        self.manual_input = QLineEdit()
+        self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
+        self.manual_input.returnPressed.connect(self._on_manual_input)
+        right.addWidget(self.manual_input)
 
         clear_btn = QPushButton("Очистить вывод")
         clear_btn.clicked.connect(self.output.clear)
@@ -451,21 +459,17 @@ class MainWindow(QMainWindow):
 
     def _on_search(self, text: str):
         text = text.strip().lower()
-        
-        # Если поиск пуст, показываем обычные вкладки
         if not text:
             self.stack.setCurrentIndex(0)
             return
 
         self.stack.setCurrentIndex(1)
 
-        # --- ИСПРАВЛЕНИЕ: Полная очистка layout ---
         while self.search_layout.count():
             item = self.search_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-        # ------------------------------------------
 
         found = False
         for category, commands in CATEGORIES.items():
@@ -482,11 +486,39 @@ class MainWindow(QMainWindow):
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.search_layout.addWidget(lbl)
 
-        # Добавляем растяжку, чтобы кнопки прижимались к верху
         self.search_layout.addStretch()
-        
-        # Прокручиваем результат в самый верх
         self.search_scroll.verticalScrollBar().setValue(0)
+
+    def _on_manual_input(self):
+        """Обработка ручного ввода команды."""
+        text = self.manual_input.text().strip()
+        if not text:
+            return
+        
+        self.manual_input.clear()
+        
+        # Извлекаем имя базовой команды (первое слово)
+        parts = text.split()
+        base_name = parts[0] if parts else ""
+
+        # Ищем эту команду в нашем каталоге
+        found_cmd = None
+        for category, commands in CATEGORIES.items():
+            for cmd in commands:
+                if cmd["name"] == base_name:
+                    found_cmd = cmd
+                    break
+            if found_cmd:
+                break
+
+        if found_cmd:
+            # Передаем в _execute полную строку (text) и найденный словарь (found_cmd)
+            # Благодаря этому сработают все safe_handler (rm, mkdir и т.д.)
+            self._execute(text, found_cmd)
+        else:
+            self._append_output(f"\n$ {text}")
+            self._append_output(f"bash: {base_name}: команда не найдена\n"
+                                f"(в TEiL ручной ввод доступен только для команд из меню)")
 
     def _open_settings(self):
         dlg = SettingsDialog(self.is_light_theme, self)
