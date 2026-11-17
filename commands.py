@@ -25,7 +25,7 @@ CATEGORIES = {
 
     "Файлы и папки": [
         {"name": "ls", "desc": "Список файлов",
-         "flags": ["-l", "-a", "-h"],
+         "flags": ["-l", "-a", "-h", "-t", "-r"], # <-- Добавлены -t и -r
          "arg_placeholder": "путь (необязательно)"},
         {"name": "cd", "desc": "Сменить директорию",
          "arg_placeholder": "путь (например /tmp)"},
@@ -52,7 +52,7 @@ CATEGORIES = {
         {"name": "tail", "desc": "Последние строки файла",
          "arg_placeholder": "-n 10 файл (по умолчанию 10 строк)"},
         {"name": "grep", "desc": "Поиск по шаблону",
-         "flags": ["-i", "-n", "-r"],
+         "flags": ["-i", "-n", "-r", "-v", "-c", "-w"], # <-- Добавлены -v, -c, -w
          "arg_placeholder": "шаблон [файл] (например root /etc/passwd)"},
         {"name": "wc", "desc": "Подсчёт строк, слов и символов",
          "flags": ["-l", "-w", "-c"],
@@ -69,9 +69,9 @@ CATEGORIES = {
         {"name": "touch", "desc": "Создать пустой файл (поддерживает скобки {1..3})",
          "arg_placeholder": "имя файла (например file{1..3}.txt)",
          "safe_handler": "touch"},
-        {"name": "mkdir", "desc": "Создать каталог (только внутри текущей директории)",
+        {"name": "mkdir", "desc": "Создать каталог (поддерживает скобки и пробелы)",
          "flags": ["-p"],
-         "arg_placeholder": "имя каталога (например new_folder)",
+         "arg_placeholder": "имена каталогов (например dir{1..3} other_dir)",
          "safe_handler": "mkdir"},
         {"name": "mv", "desc": "Переместить/переименовать (только внутри текущей директории)",
          "arg_placeholder": "источник назначение (например note.txt notes/note.txt)",
@@ -101,18 +101,19 @@ CATEGORIES = {
         {"name": "dig", "desc": "Проверка DNS-записей домена",
          "arg_placeholder": "домен (например google.com)"},
         {"name": "tracepath", "desc": "Показать маршрут до узла (может занять время)",
-         "flags": ["-m 10", "-m 15", "-m 20"], # <-- Добавили лимиты прыжков
+         "flags": ["-m 10", "-m 15", "-m 20"],
          "arg_placeholder": "хост (например 8.8.8.8)"},
     ],
 
     "Процессы": [
         {"name": "ps", "desc": "Список процессов",
-         "flags": ["aux", "-ef"]},
+         "flags": ["aux", "-ef", "| head -n 15"], # <-- Добавлено ограничение вывода
+         "arg_placeholder": "флаги"},
         {"name": "uptime", "desc": "Время работы системы", "instant": True},
         {"name": "free", "desc": "Использование памяти",
          "flags": ["-h", "-m"]},
         {"name": "top", "desc": "Снимок нагрузки на систему (безопасный)",
-         "flags": ["-bn1"],
+         "flags": ["-bn1", "| head -n 15"], # <-- Добавлено ограничение вывода
          "arg_placeholder": "(оставьте пустым для стандартного вывода)"},
     ],
 
@@ -143,13 +144,12 @@ class CommandExecutor:
     def execute(self, cmd: str) -> str:
         base_cmd = cmd.split()[0] if cmd.split() else ""
         
-        # Умный таймаут
         if base_cmd in ("tracepath", "traceroute"):
-            timeout = 180  # 3 минуты, так как сеть может долго не отвечать
+            timeout = 180
         elif base_cmd in ("ping", "dig", "ssh"):
-            timeout = 30   # 30 секунд для остальных сетевых
+            timeout = 30
         else:
-            timeout = self.TIMEOUT  # 10 секунд для обычных команд
+            timeout = self.TIMEOUT
             
         try:
             result = subprocess.run(
@@ -161,7 +161,6 @@ class CommandExecutor:
             if result.stderr:
                 out += result.stderr
                 
-            # Если команда не найдена, выводим подсказку
             if "command not found" in out or "не найдена" in out:
                 out += f"\n\n[!] Подсказка от TEiL: Утилита '{base_cmd}' не установлена в вашей системе.\n"
                 out += f"    Попробуйте установить её через терминал: sudo apt install {base_cmd}\n"
@@ -266,42 +265,55 @@ class CommandExecutor:
             
         return "\n".join(result)
 
-    # ------------------------------------------------ безопасный mkdir
+    # ------------------------------------------------ безопасный mkdir (мульти-режим и скобки)
     def safe_mkdir(self, target: str, parents: bool) -> str:
-        parts = self._parse_args(target)
-        if not parts:
+        raw_tokens = self._parse_args(target)
+        if not raw_tokens:
             return "mkdir: не указан каталог"
-        if len(parts) > 1:
-            return "mkdir: одновременное создание нескольких каталогов не поддерживается"
-        
-        target = parts[0]
+
+        final_targets = []
+        for token in raw_tokens:
+            final_targets.extend(self._expand_braces(token))
+
         cwd_real = os.path.realpath(self.cwd)
-        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+        success_count = 0
+        errors = []
 
-        if not raw_abs.startswith(cwd_real + os.sep):
-            return (f"mkdir: отказ — путь вне текущей директории:\n"
-                    f"    {raw_abs}\n"
-                    f"mkdir: используйте cd, чтобы перейти в нужный каталог")
+        for t in final_targets:
+            raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(t)))
 
-        if os.path.isdir(raw_abs) or os.path.exists(raw_abs):
-            return f"mkdir: невозможно создать каталог '{target}': Файл существует"
+            if not raw_abs.startswith(cwd_real + os.sep):
+                errors.append(f"mkdir: отказ для '{t}' — путь вне текущей директории")
+                continue
 
-        try:
-            if parents:
-                os.makedirs(raw_abs, exist_ok=False)
-            else:
-                parent = os.path.dirname(raw_abs)
-                if not os.path.isdir(parent):
-                    return (f"mkdir: не удаётся создать каталог '{target}': "
-                            f"Нет такого файла или каталога")
-                os.mkdir(raw_abs)
-            return f"mkdir: каталог создан: {target}"
-        except FileExistsError:
-            return f"mkdir: невозможно создать каталог '{target}': Файл существует"
-        except PermissionError:
-            return f"mkdir: '{target}': нет прав на создание"
-        except Exception as e:
-            return f"mkdir: ошибка: {e}"
+            if os.path.isdir(raw_abs) or os.path.exists(raw_abs):
+                errors.append(f"mkdir: невозможно создать '{t}': Файл существует")
+                continue
+
+            try:
+                if parents:
+                    os.makedirs(raw_abs, exist_ok=False)
+                else:
+                    parent = os.path.dirname(raw_abs)
+                    if not os.path.isdir(parent):
+                        errors.append(f"mkdir: не удаётся создать '{t}': Нет такого файла или каталога")
+                        continue
+                    os.mkdir(raw_abs)
+                success_count += 1
+            except FileExistsError:
+                errors.append(f"mkdir: невозможно создать '{t}': Файл существует")
+            except PermissionError:
+                errors.append(f"mkdir: '{t}': нет прав на создание")
+            except Exception as e:
+                errors.append(f"mkdir: ошибка при создании '{t}': {e}")
+
+        result = []
+        if success_count > 0:
+            result.append(f"mkdir: успешно создано каталогов: {success_count}")
+        if errors:
+            result.extend(errors)
+            
+        return "\n".join(result)
 
     # ------------------------------------------------ безопасный mv
     def safe_mv(self, args: str) -> str:

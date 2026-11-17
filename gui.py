@@ -270,7 +270,6 @@ class MainWindow(QMainWindow):
             self._execute(dlg.get_command(), cmd)
 
     def _run_in_thread(self, func, *args):
-        """Запускает функцию в отдельном потоке, чтобы не вешать GUI."""
         self.manual_input.setEnabled(False)
         self.search_input.setEnabled(False)
         self.stack.setEnabled(False)
@@ -281,7 +280,6 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def _on_thread_finished(self, result):
-        """Вызывается, когда поток завершил работу."""
         self.manual_input.setEnabled(True)
         self.search_input.setEnabled(True)
         self.stack.setEnabled(True)
