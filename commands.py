@@ -17,6 +17,10 @@ CATEGORIES = {
          "flags": ["-f", "-I"]},
         {"name": "echo",     "desc": "Вывести строку",
          "arg_placeholder": "текст"},
+        {"name": "clear",    "desc": "Очистить экран терминала",
+         "instant": True},
+        {"name": "history",  "desc": "Показать историю введенных команд",
+         "instant": True},
     ],
 
     "Файлы и папки": [
@@ -60,6 +64,8 @@ CATEGORIES = {
          "arg_placeholder": "файл (например sorted.txt)"},
         {"name": "cut", "desc": "Вырезание колонок из текста (укажите разделитель и номер колонки)",
          "arg_placeholder": "-d ' ' -f 1 файл.txt (разделитель и поле)"},
+        {"name": "diff", "desc": "Сравнить два файла и показать различия",
+         "arg_placeholder": "file1.txt file2.txt"},
         {"name": "touch", "desc": "Создать пустой файл (поддерживает скобки {1..3})",
          "arg_placeholder": "имя файла (например file{1..3}.txt)",
          "safe_handler": "touch"},
@@ -89,6 +95,14 @@ CATEGORIES = {
         {"name": "curl", "desc": "HTTP-запрос",
          "flags": ["-s", "-I", "-L"],
          "arg_placeholder": "URL"},
+        {"name": "ss", "desc": "Открытые порты и сетевые соединения",
+         "flags": ["-t", "-u", "-l", "-p", "-n"],
+         "arg_placeholder": "флаги (например -tulpn)"},
+        {"name": "dig", "desc": "Проверка DNS-записей домена",
+         "arg_placeholder": "домен (например google.com)"},
+        {"name": "tracepath", "desc": "Показать маршрут до узла (может занять время)",
+         "flags": ["-m 10", "-m 15", "-m 20"], # <-- Добавили лимиты прыжков
+         "arg_placeholder": "хост (например 8.8.8.8)"},
     ],
 
     "Процессы": [
@@ -97,6 +111,9 @@ CATEGORIES = {
         {"name": "uptime", "desc": "Время работы системы", "instant": True},
         {"name": "free", "desc": "Использование памяти",
          "flags": ["-h", "-m"]},
+        {"name": "top", "desc": "Снимок нагрузки на систему (безопасный)",
+         "flags": ["-bn1"],
+         "arg_placeholder": "(оставьте пустым для стандартного вывода)"},
     ],
 
     "Система": [
@@ -117,7 +134,6 @@ class CommandExecutor:
 
     # ------------------------------------------------ парсинг аргументов
     def _parse_args(self, arg_str: str) -> list[str]:
-        """Безопасно разбивает строку на аргументы, учитывая кавычки."""
         try:
             return shlex.split(arg_str)
         except ValueError:
@@ -125,20 +141,37 @@ class CommandExecutor:
 
     # ------------------------------------------------ обычное выполнение
     def execute(self, cmd: str) -> str:
+        base_cmd = cmd.split()[0] if cmd.split() else ""
+        
+        # Умный таймаут
+        if base_cmd in ("tracepath", "traceroute"):
+            timeout = 180  # 3 минуты, так как сеть может долго не отвечать
+        elif base_cmd in ("ping", "dig", "ssh"):
+            timeout = 30   # 30 секунд для остальных сетевых
+        else:
+            timeout = self.TIMEOUT  # 10 секунд для обычных команд
+            
         try:
             result = subprocess.run(
                 cmd, shell=True, cwd=self.cwd,
-                capture_output=True, text=True, timeout=self.TIMEOUT,
+                capture_output=True, text=True, timeout=timeout,
                 stdin=subprocess.DEVNULL,
             )
             out = result.stdout
             if result.stderr:
                 out += result.stderr
+                
+            # Если команда не найдена, выводим подсказку
+            if "command not found" in out or "не найдена" in out:
+                out += f"\n\n[!] Подсказка от TEiL: Утилита '{base_cmd}' не установлена в вашей системе.\n"
+                out += f"    Попробуйте установить её через терминал: sudo apt install {base_cmd}\n"
+                out += f"    Или проверьте правильность написания."
+
             if not out.strip():
                 out = "[команда выполнена без вывода]"
             return out
         except subprocess.TimeoutExpired:
-            return f"[!] Команда превысила лимит времени ({self.TIMEOUT} с)"
+            return f"[!] Команда превысила лимит времени ({timeout} с).\nВозможно, сеть блокирует пакеты или интернет недоступен."
         except Exception as e:
             return f"[!] Ошибка выполнения: {e}"
 

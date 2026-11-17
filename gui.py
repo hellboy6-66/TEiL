@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, 
     QMessageBox, QApplication, QStackedWidget, QDialog
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 
 from commands import CATEGORIES, CommandExecutor
@@ -17,6 +17,23 @@ from widgets import DragScrollArea, CategoryBar
 from dialogs import CommandDialog, SettingsDialog
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "teili_config.json")
+
+
+class CommandWorker(QThread):
+    """Поток для выполнения команд без зависания интерфейса."""
+    result_ready = pyqtSignal(str)
+
+    def __init__(self, func, *args):
+        super().__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        try:
+            result = self.func(*self.args)
+            self.result_ready.emit(result)
+        except Exception as e:
+            self.result_ready.emit(f"[!] Ошибка в потоке: {e}")
 
 
 class MainWindow(QMainWindow):
@@ -29,6 +46,9 @@ class MainWindow(QMainWindow):
         self.apply_theme()
 
         self.executor = CommandExecutor()
+        self.cmd_history = []
+        self.worker = None
+        
         self._build_ui()
         self._update_cwd()
 
@@ -194,7 +214,6 @@ class MainWindow(QMainWindow):
         if not text: return
         self.manual_input.clear()
         
-        # Правильно парсим базовую команду (даже если есть кавычки)
         try:
             parts = shlex.split(text)
         except ValueError:
@@ -250,13 +269,51 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._execute(dlg.get_command(), cmd)
 
+    def _run_in_thread(self, func, *args):
+        """Запускает функцию в отдельном потоке, чтобы не вешать GUI."""
+        self.manual_input.setEnabled(False)
+        self.search_input.setEnabled(False)
+        self.stack.setEnabled(False)
+        self._append_output("[выполняется...]")
+        
+        self.worker = CommandWorker(func, *args)
+        self.worker.result_ready.connect(self._on_thread_finished)
+        self.worker.start()
+
+    def _on_thread_finished(self, result):
+        """Вызывается, когда поток завершил работу."""
+        self.manual_input.setEnabled(True)
+        self.search_input.setEnabled(True)
+        self.stack.setEnabled(True)
+        
+        self._append_output(result)
+        self._update_cwd()
+
     def _execute(self, full_cmd: str, cmd: dict):
+        name = cmd["name"]
+
+        # --- Специальные виртуальные команды ---
+        if name == "clear":
+            self.output.clear()
+            return
+        if name == "history":
+            self._append_output("\n$ history")
+            if not self.cmd_history:
+                self._append_output("[история пуста]")
+            else:
+                for i, h_cmd in enumerate(self.cmd_history, 1):
+                    self._append_output(f"{i:3d}  {h_cmd}")
+            return
+
+        if full_cmd not in ("clear", "history"):
+            self.cmd_history.append(full_cmd)
+
         self._append_output(f"\n$ {full_cmd}")
         handler = cmd.get("safe_handler")
 
         if handler == "touch":
             target = full_cmd[len("touch"):].strip()
-            self._append_output(self.executor.safe_touch(target))
+            self._run_in_thread(self.executor.safe_touch, target)
             return
         if handler == "mkdir":
             rest = full_cmd[len("mkdir"):].strip()
@@ -265,11 +322,11 @@ class MainWindow(QMainWindow):
                 parts = rest.split(None, 1)
                 if "p" in parts[0]: parents = True
                 rest = parts[1] if len(parts) > 1 else ""
-            self._append_output(self.executor.safe_mkdir(rest, parents))
+            self._run_in_thread(self.executor.safe_mkdir, rest, parents)
             return
         if handler == "mv":
             rest = full_cmd[len("mv"):].strip()
-            self._append_output(self.executor.safe_mv(rest))
+            self._run_in_thread(self.executor.safe_mv, rest)
             return
         if handler == "cp":
             rest = full_cmd[len("cp"):].strip()
@@ -278,7 +335,7 @@ class MainWindow(QMainWindow):
                 parts = rest.split(None, 1)
                 if "r" in parts[0] or "R" in parts[0]: recursive = True
                 rest = parts[1] if len(parts) > 1 else ""
-            self._append_output(self.executor.safe_cp(rest, recursive))
+            self._run_in_thread(self.executor.safe_cp, rest, recursive)
             return
         if handler == "rm":
             target = full_cmd[len("rm"):].strip()
@@ -295,9 +352,9 @@ class MainWindow(QMainWindow):
             if reply != QMessageBox.StandardButton.Yes:
                 self._append_output("rm: отменено пользователем")
                 return
-            self._append_output(self.executor.safe_rm(target))
+            self._run_in_thread(self.executor.safe_rm, target)
             return
-        if cmd["name"] == "cd":
+        if name == "cd":
             target = full_cmd[len("cd"):].strip()
             if not target:
                 self._append_output(self.executor.cwd)
@@ -307,7 +364,8 @@ class MainWindow(QMainWindow):
                 else: self._append_output(err)
             return
 
-        self._append_output(self.executor.execute(full_cmd))
+        # Для всех остальных команд (subprocess)
+        self._run_in_thread(self.executor.execute, full_cmd)
 
     def _update_cwd(self):
         self.cwd_label.setText(self.executor.cwd)
