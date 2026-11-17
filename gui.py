@@ -1,13 +1,16 @@
 """Главное окно приложения TEiL."""
 
+import os
 import shlex
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, 
-    QMessageBox, QApplication, QStackedWidget, QDialog, QCompleter
+    QMessageBox, QApplication, QStackedWidget, QDialog, QCompleter,
+    QSplitter, QTreeView, QHeaderView
 )
 from PyQt6.QtCore import Qt, QEvent
-from PyQt6.QtGui import QTextCursor
+# В PyQt6 QFileSystemModel находится в QtGui!
+from PyQt6.QtGui import QTextCursor, QFileSystemModel
 
 from commands import CATEGORIES, CommandExecutor
 from styles import DARK_STYLESHEET, LIGHT_STYLESHEET
@@ -20,9 +23,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
-        self.resize(1150, 720)
+        self.resize(1400, 750)
         
-        # Загружаем настройки из config.py
+        # Загружаем настройки
         settings = config.load_settings()
         self.is_light_theme = settings["is_light_theme"]
         self.saved_history = settings["history"]
@@ -35,7 +38,7 @@ class MainWindow(QMainWindow):
         self.history_pos = len(self.cmd_history)
         self.worker = None
         
-        # Список всех команд для автодополнения по Tab
+        # Список всех команд для автодополнения
         self.all_cmd_names = []
         for cat_cmds in CATEGORIES.values():
             for cmd in cat_cmds:
@@ -44,7 +47,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._update_cwd()
 
-        # Красивое HTML-приветствие
+        # Приветствие
         welcome_html = """
         <div style="font-family: 'Consolas', 'DejaVu Sans Mono', monospace;">
             <h1 style="margin-bottom: 0px; font-size: 28px;">TEiL</h1>
@@ -53,8 +56,9 @@ class MainWindow(QMainWindow):
             <p>Добро пожаловать в TEiL!</p>
             <p><b>Как пользоваться:</b></p>
             <ul>
-                <li>🖱️ <b>Кнопки слева:</b> выберите команду, настройте флаги и нажмите «Выполнить».</li>
+                <li>📁 <b>Дерево файлов:</b> слева отображается текущая папка.</li>
                 <li>⌨️ <b>Ручной ввод:</b> введите команду в строке внизу и нажмите <i>Enter</i>.</li>
+                <li>🖱️ <b>Кнопки:</b> справа выберите команду, настройте флаги и нажмите «Выполнить».</li>
             </ul>
             <p><b>💡 Полезные советы:</b></p>
             <ul>
@@ -68,7 +72,6 @@ class MainWindow(QMainWindow):
         self.output.moveCursor(QTextCursor.MoveOperation.End)
 
     def save_config(self):
-        """Вызывает функцию сохранения из config.py"""
         config.save_settings(
             self.is_light_theme, 
             self.executor.cwd, 
@@ -136,19 +139,77 @@ class MainWindow(QMainWindow):
         
         root.addLayout(header)
 
-        main_area = QHBoxLayout()
+        # --- Создаем QSplitter для трех панелей ---
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Левая панель
-        left_panel = QWidget()
-        left_panel.setMaximumWidth(380)
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(6)
+        # 1. Левая панель (Дерево файлов)
+        self.tree_view = QTreeView()
+        self.file_model = QFileSystemModel()
+        self.file_model.setRootPath(self.executor.cwd)
+        self.tree_view.setModel(self.file_model)
+        
+        self.tree_view.setRootIndex(self.file_model.index(self.executor.cwd))
+        self.tree_view.setColumnHidden(1, True) # Размер
+        self.tree_view.setColumnHidden(2, True) # Тип
+        self.tree_view.setColumnHidden(3, True) # Дата
+        self.tree_view.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        
+        self.main_splitter.addWidget(self.tree_view)
+
+        # 2. Центральная панель (Терминал)
+        terminal_panel = QWidget()
+        term_layout = QVBoxLayout(terminal_panel)
+        term_layout.setContentsMargins(0, 0, 0, 0)
+        
+        title = QLabel("Результат выполнения:")
+        title.setObjectName("sectionTitle")
+        term_layout.addWidget(title)
+
+        self.output = QTextEdit()
+        self.output.setObjectName("output")
+        self.output.setReadOnly(True)
+        term_layout.addWidget(self.output, 1)
+
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(4)
+
+        self.manual_input = QLineEdit()
+        self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
+        self.manual_input.returnPressed.connect(self._on_manual_input)
+        self.manual_input.installEventFilter(self)
+
+        completer = QCompleter(self.all_cmd_names, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion) 
+        self.manual_input.setCompleter(completer)
+        completer.popup().installEventFilter(self)
+
+        self.btn_history_up = QPushButton("⬆")
+        self.btn_history_up.setToolTip("Предыдущая команда из истории (Стрелка Вверх)")
+        self.btn_history_up.setFixedSize(36, 28)
+        self.btn_history_up.clicked.connect(self._on_history_up)
+
+        input_layout.addWidget(self.manual_input)
+        input_layout.addWidget(self.btn_history_up)
+        term_layout.addLayout(input_layout)
+
+        clear_btn = QPushButton("Очистить вывод")
+        clear_btn.clicked.connect(self.output.clear)
+        term_layout.addWidget(clear_btn)
+        
+        self.main_splitter.addWidget(terminal_panel)
+
+        # 3. Правая панель (Команды)
+        commands_panel = QWidget()
+        commands_panel.setMinimumWidth(300)
+        cmd_layout = QVBoxLayout(commands_panel)
+        cmd_layout.setContentsMargins(0, 0, 0, 0)
+        cmd_layout.setSpacing(6)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Поиск команд...")
         self.search_input.textChanged.connect(self._on_search)
-        left_layout.addWidget(self.search_input)
+        cmd_layout.addWidget(self.search_input)
 
         self.stack = QStackedWidget()
 
@@ -179,49 +240,16 @@ class MainWindow(QMainWindow):
         self.search_scroll.setWidget(self.search_container)
         self.stack.addWidget(self.search_scroll)
 
-        left_layout.addWidget(self.stack, 1)
-        main_area.addWidget(left_panel)
+        cmd_layout.addWidget(self.stack, 1)
+        self.main_splitter.addWidget(commands_panel)
 
-        # Правая панель
-        right = QVBoxLayout()
-        title = QLabel("Результат выполнения:")
-        title.setObjectName("sectionTitle")
-        right.addWidget(title)
+        # Настраиваем пропорции окна (Левая: 250px, Центр: 550px, Правая: 350px)
+        self.main_splitter.setSizes([250, 550, 350])
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)  # Терминал растягивается
+        self.main_splitter.setStretchFactor(2, 0)
 
-        self.output = QTextEdit()
-        self.output.setObjectName("output")
-        self.output.setReadOnly(True)
-        right.addWidget(self.output, 1)
-
-        input_layout = QHBoxLayout()
-        input_layout.setSpacing(4)
-
-        self.manual_input = QLineEdit()
-        self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
-        self.manual_input.returnPressed.connect(self._on_manual_input)
-        self.manual_input.installEventFilter(self)
-
-        completer = QCompleter(self.all_cmd_names, self)
-        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion) 
-        self.manual_input.setCompleter(completer)
-        completer.popup().installEventFilter(self)
-
-        self.btn_history_up = QPushButton("⬆")
-        self.btn_history_up.setToolTip("Предыдущая команда из истории (Стрелка Вверх)")
-        self.btn_history_up.setFixedSize(36, 28)
-        self.btn_history_up.clicked.connect(self._on_history_up)
-
-        input_layout.addWidget(self.manual_input)
-        input_layout.addWidget(self.btn_history_up)
-        right.addLayout(input_layout)
-
-        clear_btn = QPushButton("Очистить вывод")
-        clear_btn.clicked.connect(self.output.clear)
-        right.addWidget(clear_btn)
-
-        main_area.addLayout(right, 1)
-        root.addLayout(main_area, 1)
+        root.addWidget(self.main_splitter, 1)
 
     def _create_command_button(self, cmd: dict) -> QPushButton:
         btn = QPushButton(cmd["name"])
@@ -348,7 +376,6 @@ class MainWindow(QMainWindow):
         self.stack.setEnabled(False)
         self._append_output("[выполняется...]")
         
-        # Используем класс из workers.py
         self.worker = CommandWorker(func, *args)
         self.worker.result_ready.connect(self._on_thread_finished)
         self.worker.start()
@@ -445,6 +472,8 @@ class MainWindow(QMainWindow):
 
     def _update_cwd(self):
         self.cwd_label.setText(self.executor.cwd)
+        # Обновляем корень дерева файлов при смене директории
+        self.tree_view.setRootIndex(self.file_model.index(self.executor.cwd))
 
     def _append_output(self, text: str):
         if not text.endswith("\n"): text += "\n"
