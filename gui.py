@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, 
     QMessageBox, QApplication, QStackedWidget, QDialog
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QEvent
 from PyQt6.QtGui import QTextCursor
 
 from commands import CATEGORIES, CommandExecutor
@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
 
         self.executor = CommandExecutor()
         self.cmd_history = []
+        self.history_pos = 0
         self.worker = None
         
         self._build_ui()
@@ -54,10 +55,22 @@ class MainWindow(QMainWindow):
 
         self._append_output(
             "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Вы можете нажимать кнопки слева или вводить команды вручную\n"
-            "в строке внизу (доступны только команды из меню).\n"
-            "Настройки (тема и справочник) доступны в меню справа вверху.\n"
+            "Вы можете нажимать кнопки слева или вводить команды вручную.\n"
+            "Кнопка ⬆ справа от строки ввода или клавиша Стрелка Вверх (⬆)\n"
+            "вызывает историю предыдущих команд.\n"
         )
+
+    # ------------------------------------------------------------- Event Filter
+    def eventFilter(self, obj, event):
+        """Перехватывает нажатия клавиш в строке ручного ввода."""
+        if obj == self.manual_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Up:
+                self._on_history_up()
+                return True  # Поглощаем событие, чтобы курсор не прыгал в начало
+            elif event.key() == Qt.Key.Key_Down:
+                self._on_history_down()
+                return True
+        return super().eventFilter(obj, event)
 
     def load_theme_setting(self) -> bool:
         if os.path.exists(CONFIG_FILE):
@@ -158,10 +171,26 @@ class MainWindow(QMainWindow):
         self.output.setReadOnly(True)
         right.addWidget(self.output, 1)
 
+        # --- Строка ввода и кнопка истории ---
+        input_layout = QHBoxLayout()
+        input_layout.setSpacing(4)
+
         self.manual_input = QLineEdit()
         self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
         self.manual_input.returnPressed.connect(self._on_manual_input)
-        right.addWidget(self.manual_input)
+        
+        # Устанавливаем фильтр событий для перехвата стрелок клавиатуры
+        self.manual_input.installEventFilter(self)
+
+        self.btn_history_up = QPushButton("⬆")
+        self.btn_history_up.setToolTip("Предыдущая команда из истории (Стрелка Вверх)")
+        self.btn_history_up.setFixedSize(36, 28)
+        self.btn_history_up.clicked.connect(self._on_history_up)
+
+        input_layout.addWidget(self.manual_input)
+        input_layout.addWidget(self.btn_history_up)
+        right.addLayout(input_layout)
+        # -------------------------------------
 
         clear_btn = QPushButton("Очистить вывод")
         clear_btn.clicked.connect(self.output.clear)
@@ -208,6 +237,30 @@ class MainWindow(QMainWindow):
 
         self.search_layout.addStretch()
         self.search_scroll.verticalScrollBar().setValue(0)
+
+    def _on_history_up(self):
+        """Прокручивает историю команд вверх (назад)."""
+        if not self.cmd_history:
+            return
+        
+        self.history_pos -= 1
+        if self.history_pos < 0:
+            self.history_pos = len(self.cmd_history) - 1
+            
+        self.manual_input.setText(self.cmd_history[self.history_pos])
+        self.manual_input.setCursorPosition(len(self.manual_input.text()))
+
+    def _on_history_down(self):
+        """Прокручивает историю команд вниз (вперед)."""
+        if not self.cmd_history:
+            return
+        
+        self.history_pos += 1
+        if self.history_pos >= len(self.cmd_history):
+            self.history_pos = 0
+            
+        self.manual_input.setText(self.cmd_history[self.history_pos])
+        self.manual_input.setCursorPosition(len(self.manual_input.text()))
 
     def _on_manual_input(self):
         text = self.manual_input.text().strip()
@@ -271,6 +324,7 @@ class MainWindow(QMainWindow):
 
     def _run_in_thread(self, func, *args):
         self.manual_input.setEnabled(False)
+        self.btn_history_up.setEnabled(False)
         self.search_input.setEnabled(False)
         self.stack.setEnabled(False)
         self._append_output("[выполняется...]")
@@ -281,6 +335,7 @@ class MainWindow(QMainWindow):
 
     def _on_thread_finished(self, result):
         self.manual_input.setEnabled(True)
+        self.btn_history_up.setEnabled(True)
         self.search_input.setEnabled(True)
         self.stack.setEnabled(True)
         
@@ -305,6 +360,7 @@ class MainWindow(QMainWindow):
 
         if full_cmd not in ("clear", "history"):
             self.cmd_history.append(full_cmd)
+            self.history_pos = len(self.cmd_history)
 
         self._append_output(f"\n$ {full_cmd}")
         handler = cmd.get("safe_handler")
@@ -362,7 +418,6 @@ class MainWindow(QMainWindow):
                 else: self._append_output(err)
             return
 
-        # Для всех остальных команд (subprocess)
         self._run_in_thread(self.executor.execute, full_cmd)
 
     def _update_cwd(self):
