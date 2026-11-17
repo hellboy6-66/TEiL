@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from manual import MANUAL_DATA
+from lessons import LESSONS
 
 def _is_single_letter_flag(flag: str) -> bool:
     return len(flag) == 2 and flag[0] == "-" and flag[1].isalpha()
@@ -95,17 +96,10 @@ class HelpDialog(QDialog):
         self.resize(750, 600)
         layout = QVBoxLayout(self)
 
-        # Выбираем цвета в зависимости от темы
         if is_light:
-            header_color = "#005a9e"  # Темно-синий
-            cmd_color = "#2e7d32"     # Темно-зеленый
-            text_color = "#333333"    # Темно-серый
-            hr_color = "#cccccc"      # Светло-серая линия
+            header_color, cmd_color, text_color, hr_color = "#005a9e", "#2e7d32", "#333333", "#cccccc"
         else:
-            header_color = "#89b4fa"  # Светло-синий
-            cmd_color = "#a6e3a1"     # Светло-зеленый
-            text_color = "#cdd6f4"    # Светло-серый
-            hr_color = "#313244"      # Темно-серая линия
+            header_color, cmd_color, text_color, hr_color = "#89b4fa", "#a6e3a1", "#cdd6f4", "#313244"
 
         browser = QTextBrowser()
         html = "<html><body style='font-family: Consolas, monospace; font-size: 14px;'>"
@@ -127,6 +121,100 @@ class HelpDialog(QDialog):
         layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
 
 
+class LessonDialog(QDialog):
+    """Окно интерактивных обучающих заданий."""
+    progress_updated = pyqtSignal(int)
+
+    def __init__(self, start_idx: int, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("TEiL — Обучающий курс")
+        self.setMinimumWidth(450)
+        self.setMinimumHeight(300)
+        # Важно: окно не должно блокировать главное окно
+        self.setModal(False) 
+        
+        self.current_idx = start_idx
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        
+        self.title_lbl = QLabel()
+        self.title_lbl.setStyleSheet("font-size: 18px; font-weight: bold; color: #89b4fa;")
+        layout.addWidget(self.title_lbl)
+        
+        self.desc_lbl = QLabel()
+        self.desc_lbl.setWordWrap(True)
+        self.desc_lbl.setStyleSheet("font-size: 14px;")
+        layout.addWidget(self.desc_lbl)
+        
+        layout.addStretch()
+        
+        self.status_lbl = QLabel("Ожидание выполнения...")
+        self.status_lbl.setStyleSheet("color: #f9e2af; font-style: italic;")
+        layout.addWidget(self.status_lbl)
+        
+        # Кнопки: Сброс (слева) и Закрыть (справа)
+        btns = QHBoxLayout()
+        
+        btn_reset = QPushButton("Сбросить прогресс")
+        btn_reset.clicked.connect(self._reset_progress)
+        btns.addWidget(btn_reset)
+        
+        btns.addStretch() # Распирает кнопки по краям
+        
+        btn_close = QPushButton("Закрыть")
+        btn_close.clicked.connect(self.accept)
+        btns.addWidget(btn_close)
+        
+        layout.addLayout(btns)
+        
+        self.load_lesson()
+
+    def load_lesson(self):
+        if self.current_idx < len(LESSONS):
+            lesson = LESSONS[self.current_idx]
+            self.title_lbl.setText(lesson["title"])
+            self.desc_lbl.setText(lesson["desc"])
+            self.desc_lbl.setStyleSheet("font-size: 14px;")
+            self.status_lbl.setText("Ожидание выполнения...")
+            self.status_lbl.setStyleSheet("color: #f9e2af; font-style: italic;")
+        else:
+            self.title_lbl.setText("🎉 Курс завершен!")
+            self.desc_lbl.setText("Поздравляем! Вы успешно освоили базовые команды работы с файловой системой в Linux.")
+            self.status_lbl.setText("")
+            self.desc_lbl.setStyleSheet("font-size: 16px; color: #a6e3a1;")
+
+    def check_command(self, cmd: str, cwd: str):
+        if self.current_idx >= len(LESSONS):
+            return
+
+        changed = False
+        while self.current_idx < len(LESSONS):
+            lesson = LESSONS[self.current_idx]
+            if lesson["check"](cwd, cmd):
+                self.current_idx += 1
+                changed = True
+            else:
+                break
+                
+        if changed:
+            self.load_lesson()
+            self.progress_updated.emit(self.current_idx)
+            
+            if self.current_idx < len(LESSONS):
+                self.status_lbl.setText("✅ Предыдущий шаг пройден! Следующее задание:")
+                self.status_lbl.setStyleSheet("color: #a6e3a1; font-weight: bold;")
+            else:
+                self.status_lbl.setText("")
+
+    def _reset_progress(self):
+        self.current_idx = 0
+        self.load_lesson()
+        self.status_lbl.setText("Прогресс сброшен. Начинаем сначала!")
+        self.status_lbl.setStyleSheet("color: #f9e2af; font-style: italic;")
+        self.progress_updated.emit(0)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, is_light: bool, max_history: int, parent=None):
         super().__init__(parent)
@@ -135,7 +223,6 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # --- Блок оформления ---
         theme_group = QGroupBox("Оформление")
         tl = QVBoxLayout(theme_group)
         self.light_cb = QCheckBox("Светлая тема")
@@ -143,7 +230,6 @@ class SettingsDialog(QDialog):
         tl.addWidget(self.light_cb)
         layout.addWidget(theme_group)
 
-        # --- Блок истории (Ползунок) ---
         history_group = QGroupBox("История команд")
         hl_hist = QVBoxLayout(history_group)
         
@@ -163,17 +249,21 @@ class SettingsDialog(QDialog):
         
         layout.addWidget(history_group)
 
-        # --- Блок помощи ---
-        help_group = QGroupBox("Помощь")
+        help_group = QGroupBox("Помощь и обучение")
         hl = QVBoxLayout(help_group)
-        btn_manual = QPushButton("Открыть справочник команд")
+        
+        btn_manual = QPushButton("📖 Открыть справочник команд")
         btn_manual.clicked.connect(self._open_manual)
         hl.addWidget(btn_manual)
+        
+        btn_lessons = QPushButton("🎓 Обучающие задания (Туториал)")
+        btn_lessons.clicked.connect(self._open_lessons)
+        hl.addWidget(btn_lessons)
+        
         layout.addWidget(help_group)
 
         layout.addStretch()
         
-        # --- Кнопки Сохранить / Отмена ---
         btns = QHBoxLayout()
         btns.addStretch(1)
         
@@ -192,11 +282,15 @@ class SettingsDialog(QDialog):
         self.val_label.setText(str(value))
 
     def _open_manual(self):
-        # Передаем текущее состояние галочки "Светлая тема" в справочник,
-        # чтобы цвета текста соответствовали выбранному режиму
         dlg = HelpDialog(self.light_cb.isChecked(), self)
         dlg.exec()
 
+    def _open_lessons(self):
+        # Сначала принудительно закрываем настройки, чтобы они не блокировали уроки
+        self.accept()
+        # Затем вызываем открытие уроков в главном окне
+        if self.parent() and hasattr(self.parent(), '_open_lessons'):
+            self.parent()._open_lessons()
+
     def get_settings(self) -> tuple[bool, int]:
-        """Возвращает (светлая_тема, лимит_истории)."""
         return self.light_cb.isChecked(), self.history_slider.value()

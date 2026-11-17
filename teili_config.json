@@ -1,17 +1,18 @@
 {
-    "is_light_theme": true,
-    "cwd": "/home/arseniy/\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b",
+    "is_light_theme": false,
+    "cwd": "/home/arseniy",
     "history": [
-        "echo \u043f\u0440\u0438\u0432\u0435\u0442",
-        "date",
-        "pwd",
-        "uptime",
-        "touch text.txt",
-        "rm text.txt",
-        "cd asddfs",
-        "date",
-        "whoami",
-        "ls -a"
+        "ls",
+        "ls",
+        "mkdir practice",
+        "cd practice",
+        "touch note.txt",
+        "ls",
+        "rm note.txt",
+        "mkdir practice",
+        "cd /home/arseniy",
+        "mkdir practice"
     ],
-    "max_history": 10
+    "max_history": 10,
+    "lesson_idx": 0
 }

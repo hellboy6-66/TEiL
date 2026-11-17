@@ -9,13 +9,13 @@ from PyQt6.QtWidgets import (
     QSplitter, QTreeView, QHeaderView
 )
 from PyQt6.QtCore import Qt, QEvent
-# В PyQt6 QFileSystemModel находится в QtGui!
+# QFileSystemModel находится в QtGui в PyQt6
 from PyQt6.QtGui import QTextCursor, QFileSystemModel
 
 from commands import CATEGORIES, CommandExecutor
 from styles import DARK_STYLESHEET, LIGHT_STYLESHEET
 from widgets import DragScrollArea, CategoryBar
-from dialogs import CommandDialog, SettingsDialog
+from dialogs import CommandDialog, SettingsDialog, LessonDialog
 from workers import CommandWorker
 import config
 
@@ -25,11 +25,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
         self.resize(1400, 750)
         
-        # Загружаем настройки
         settings = config.load_settings()
         self.is_light_theme = settings["is_light_theme"]
         self.saved_history = settings["history"]
         self.max_history = settings["max_history"]
+        self.lesson_idx = settings.get("lesson_idx", 0)
         
         self.apply_theme()
 
@@ -37,8 +37,9 @@ class MainWindow(QMainWindow):
         self.cmd_history = self.saved_history
         self.history_pos = len(self.cmd_history)
         self.worker = None
+        self.last_executed_cmd = ""
+        self.lesson_dlg = None
         
-        # Список всех команд для автодополнения
         self.all_cmd_names = []
         for cat_cmds in CATEGORIES.values():
             for cmd in cat_cmds:
@@ -47,7 +48,6 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._update_cwd()
 
-        # Приветствие
         welcome_html = """
         <div style="font-family: 'Consolas', 'DejaVu Sans Mono', monospace;">
             <h1 style="margin-bottom: 0px; font-size: 28px;">TEiL</h1>
@@ -62,8 +62,8 @@ class MainWindow(QMainWindow):
             </ul>
             <p><b>💡 Полезные советы:</b></p>
             <ul>
-                <li>Используйте <b>⬆ (Стрелка Вверх)</b> на клавиатуре или кнопку <b>⬆</b> справа от ввода для вызова истории.</li>
-                <li>Откройте <b>⚙ Настройки</b> справа вверху, чтобы сменить тему или прочитать справочник команд.</li>
+                <li>Используйте <b>⬆ (Стрелка Вверх)</b> на клавиатуре для вызова истории.</li>
+                <li>Откройте <b>⚙ Настройки</b>, чтобы сменить тему, прочитать справку или пройти <b>обучающие задания</b>.</li>
             </ul>
             <br>
         </div>
@@ -76,7 +76,8 @@ class MainWindow(QMainWindow):
             self.is_light_theme, 
             self.executor.cwd, 
             self.cmd_history, 
-            self.max_history
+            self.max_history,
+            self.lesson_idx
         )
 
     def closeEvent(self, event):
@@ -139,7 +140,6 @@ class MainWindow(QMainWindow):
         
         root.addLayout(header)
 
-        # --- Создаем QSplitter для трех панелей ---
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # 1. Левая панель (Дерево файлов)
@@ -149,9 +149,9 @@ class MainWindow(QMainWindow):
         self.tree_view.setModel(self.file_model)
         
         self.tree_view.setRootIndex(self.file_model.index(self.executor.cwd))
-        self.tree_view.setColumnHidden(1, True) # Размер
-        self.tree_view.setColumnHidden(2, True) # Тип
-        self.tree_view.setColumnHidden(3, True) # Дата
+        self.tree_view.setColumnHidden(1, True) 
+        self.tree_view.setColumnHidden(2, True) 
+        self.tree_view.setColumnHidden(3, True) 
         self.tree_view.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         
         self.main_splitter.addWidget(self.tree_view)
@@ -213,7 +213,6 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
 
-        # Страница 0: Вкладки
         tabs_page = QWidget()
         tabs_layout = QVBoxLayout(tabs_page)
         tabs_layout.setContentsMargins(0, 0, 0, 0)
@@ -230,7 +229,6 @@ class MainWindow(QMainWindow):
         self.category_bar.category_selected.connect(self.tabs.setCurrentIndex)
         self.stack.addWidget(tabs_page)
 
-        # Страница 1: Поиск
         self.search_scroll = DragScrollArea()
         self.search_scroll.setWidgetResizable(True)
         self.search_container = QWidget()
@@ -243,10 +241,9 @@ class MainWindow(QMainWindow):
         cmd_layout.addWidget(self.stack, 1)
         self.main_splitter.addWidget(commands_panel)
 
-        # Настраиваем пропорции окна (Левая: 250px, Центр: 550px, Правая: 350px)
         self.main_splitter.setSizes([250, 550, 350])
         self.main_splitter.setStretchFactor(0, 0)
-        self.main_splitter.setStretchFactor(1, 1)  # Терминал растягивается
+        self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setStretchFactor(2, 0)
 
         root.addWidget(self.main_splitter, 1)
@@ -346,6 +343,29 @@ class MainWindow(QMainWindow):
                 
             self.save_config()
 
+    def _open_lessons(self):
+        """Открывает окно уроков без блокировки главного окна (через show)"""
+        if self.lesson_dlg is not None:
+            self.lesson_dlg.close()
+            
+        self.lesson_dlg = LessonDialog(self.lesson_idx, self)
+        self.lesson_dlg.progress_updated.connect(self._on_lesson_progress)
+        self.lesson_dlg.finished.connect(self._on_lesson_closed)
+        
+        self.lesson_dlg.show()
+        self.lesson_dlg.raise_()
+        self.lesson_dlg.activateWindow()
+        
+        # Сразу проверяем состояние файловой системы (вдруг шаг уже выполнен)
+        self.lesson_dlg.check_command(self.last_executed_cmd, self.executor.cwd)
+
+    def _on_lesson_closed(self):
+        self.lesson_dlg = None
+
+    def _on_lesson_progress(self, new_idx: int):
+        self.lesson_idx = new_idx
+        self.save_config()
+
     def _build_tabs(self):
         for category, commands in CATEGORIES.items():
             scroll = DragScrollArea()
@@ -388,9 +408,13 @@ class MainWindow(QMainWindow):
         
         self._append_output(result)
         self._update_cwd()
+        
+        if self.lesson_dlg and self.lesson_dlg.isVisible():
+            self.lesson_dlg.check_command(self.last_executed_cmd, self.executor.cwd)
 
     def _execute(self, full_cmd: str, cmd: dict):
         name = cmd["name"]
+        self.last_executed_cmd = full_cmd
 
         if name == "clear":
             self.output.clear()
@@ -464,7 +488,10 @@ class MainWindow(QMainWindow):
                 self._append_output(self.executor.cwd)
             else:
                 ok, err = self.executor.change_dir(target)
-                if ok: self._update_cwd()
+                if ok: 
+                    self._update_cwd()
+                    if self.lesson_dlg and self.lesson_dlg.isVisible():
+                        self.lesson_dlg.check_command(self.last_executed_cmd, self.executor.cwd)
                 else: self._append_output(err)
             return
 
@@ -472,7 +499,6 @@ class MainWindow(QMainWindow):
 
     def _update_cwd(self):
         self.cwd_label.setText(self.executor.cwd)
-        # Обновляем корень дерева файлов при смене директории
         self.tree_view.setRootIndex(self.file_model.index(self.executor.cwd))
 
     def _append_output(self, text: str):
