@@ -1,40 +1,20 @@
 """Главное окно приложения TEiL."""
 
-import os
-import json
 import shlex
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, 
     QMessageBox, QApplication, QStackedWidget, QDialog, QCompleter
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QEvent
+from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtGui import QTextCursor
 
 from commands import CATEGORIES, CommandExecutor
 from styles import DARK_STYLESHEET, LIGHT_STYLESHEET
 from widgets import DragScrollArea, CategoryBar
 from dialogs import CommandDialog, SettingsDialog
-
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "teili_config.json")
-
-
-class CommandWorker(QThread):
-    """Поток для выполнения команд без зависания интерфейса."""
-    result_ready = pyqtSignal(str)
-
-    def __init__(self, func, *args):
-        super().__init__()
-        self.func = func
-        self.args = args
-
-    def run(self):
-        try:
-            result = self.func(*self.args)
-            self.result_ready.emit(result)
-        except Exception as e:
-            self.result_ready.emit(f"[!] Ошибка в потоке: {e}")
-
+from workers import CommandWorker
+import config
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -42,10 +22,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
         self.resize(1150, 720)
         
-        self.load_config()
+        # Загружаем настройки из config.py
+        settings = config.load_settings()
+        self.is_light_theme = settings["is_light_theme"]
+        self.saved_history = settings["history"]
+        self.max_history = settings["max_history"]
+        
         self.apply_theme()
 
-        self.executor = CommandExecutor(self.saved_cwd)
+        self.executor = CommandExecutor(settings["cwd"])
         self.cmd_history = self.saved_history
         self.history_pos = len(self.cmd_history)
         self.worker = None
@@ -82,35 +67,14 @@ class MainWindow(QMainWindow):
         self.output.insertHtml(welcome_html)
         self.output.moveCursor(QTextCursor.MoveOperation.End)
 
-    def load_config(self):
-        self.is_light_theme = False
-        self.saved_cwd = os.path.expanduser("~")
-        self.saved_history = []
-        self.max_history = 100
-        
-        if os.path.exists(CONFIG_FILE):
-            try:
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    self.is_light_theme = data.get("is_light_theme", False)
-                    self.saved_cwd = data.get("cwd", os.path.expanduser("~"))
-                    self.saved_history = data.get("history", [])
-                    self.max_history = data.get("max_history", 100)
-            except Exception:
-                pass
-
     def save_config(self):
-        data = {
-            "is_light_theme": self.is_light_theme,
-            "cwd": self.executor.cwd,
-            "history": self.cmd_history,
-            "max_history": self.max_history
-        }
-        try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
-        except Exception as e:
-            print(f"Не удалось сохранить настройки: {e}")
+        """Вызывает функцию сохранения из config.py"""
+        config.save_settings(
+            self.is_light_theme, 
+            self.executor.cwd, 
+            self.cmd_history, 
+            self.max_history
+        )
 
     def closeEvent(self, event):
         self.save_config()
@@ -122,12 +86,10 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(LIGHT_STYLESHEET if self.is_light_theme else DARK_STYLESHEET)
 
     def eventFilter(self, obj, event):
-        # Проверяем, пришло ли событие от строки ввода ИЛИ от всплывающего окна подсказок
         is_input = (obj == self.manual_input)
         is_popup = (self.manual_input.completer() and obj == self.manual_input.completer().popup())
         
         if is_input or is_popup:
-            # Блокируем стандартную смену фокуса при нажатии Tab
             if event.type() == QEvent.Type.ShortcutOverride and event.key() == Qt.Key.Key_Tab:
                 return True
                 
@@ -139,7 +101,6 @@ class MainWindow(QMainWindow):
                     self._on_history_down()
                     return True
                 elif event.key() == Qt.Key.Key_Tab:
-                    # 1. Выполняем автодополнение
                     text = self.manual_input.text().strip().lower()
                     if text:
                         for cmd_name in self.all_cmd_names:
@@ -148,7 +109,6 @@ class MainWindow(QMainWindow):
                                 self.manual_input.setCursorPosition(len(cmd_name))
                                 break
                     
-                    # 2. Закрываем подсказку и принудительно ставим фокус обратно в строку
                     if self.manual_input.completer():
                         self.manual_input.completer().popup().hide()
                     self.manual_input.setFocus()
@@ -241,13 +201,10 @@ class MainWindow(QMainWindow):
         self.manual_input.returnPressed.connect(self._on_manual_input)
         self.manual_input.installEventFilter(self)
 
-        # Настройка QCompleter
         completer = QCompleter(self.all_cmd_names, self)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion) 
         self.manual_input.setCompleter(completer)
-        
-        # ВАЖНО: устанавливаем фильтр событий и на само всплывающее окно
         completer.popup().installEventFilter(self)
 
         self.btn_history_up = QPushButton("⬆")
@@ -306,20 +263,16 @@ class MainWindow(QMainWindow):
         self.search_scroll.verticalScrollBar().setValue(0)
 
     def _on_history_up(self):
-        if not self.cmd_history:
-            return
+        if not self.cmd_history: return
         self.history_pos -= 1
-        if self.history_pos < 0:
-            self.history_pos = len(self.cmd_history) - 1
+        if self.history_pos < 0: self.history_pos = len(self.cmd_history) - 1
         self.manual_input.setText(self.cmd_history[self.history_pos])
         self.manual_input.setCursorPosition(len(self.manual_input.text()))
 
     def _on_history_down(self):
-        if not self.cmd_history:
-            return
+        if not self.cmd_history: return
         self.history_pos += 1
-        if self.history_pos >= len(self.cmd_history):
-            self.history_pos = 0
+        if self.history_pos >= len(self.cmd_history): self.history_pos = 0
         self.manual_input.setText(self.cmd_history[self.history_pos])
         self.manual_input.setCursorPosition(len(self.manual_input.text()))
 
@@ -395,6 +348,7 @@ class MainWindow(QMainWindow):
         self.stack.setEnabled(False)
         self._append_output("[выполняется...]")
         
+        # Используем класс из workers.py
         self.worker = CommandWorker(func, *args)
         self.worker.result_ready.connect(self._on_thread_finished)
         self.worker.start()
