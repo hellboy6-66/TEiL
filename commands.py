@@ -209,16 +209,11 @@ class CommandExecutor:
         for token in raw_tokens:
             final_targets.extend(self._expand_braces(token))
 
-        cwd_real = os.path.realpath(self.cwd)
         success_count = 0
         errors = []
 
         for t in final_targets:
-            raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(t)))
-
-            if not raw_abs.startswith(cwd_real + os.sep):
-                errors.append(f"touch: отказ для '{t}' — путь вне текущей директории")
-                continue
+            raw_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(t)))
 
             try:
                 parent = os.path.dirname(raw_abs)
@@ -251,16 +246,11 @@ class CommandExecutor:
         for token in raw_tokens:
             final_targets.extend(self._expand_braces(token))
 
-        cwd_real = os.path.realpath(self.cwd)
         success_count = 0
         errors = []
 
         for t in final_targets:
-            raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(t)))
-
-            if not raw_abs.startswith(cwd_real + os.sep):
-                errors.append(f"mkdir: отказ для '{t}' — путь вне текущей директории")
-                continue
+            raw_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(t)))
 
             if os.path.isdir(raw_abs) or os.path.exists(raw_abs):
                 errors.append(f"mkdir: невозможно создать '{t}': Файл существует")
@@ -296,18 +286,11 @@ class CommandExecutor:
             return "mv: укажите ровно два аргумента (источник и назначение)"
 
         src_arg, dst_arg = parts[0], parts[1]
-        cwd_real = os.path.realpath(self.cwd)
-        src_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(src_arg)))
-        dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
+        src_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(src_arg)))
+        dst_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(dst_arg)))
 
-        if not src_abs.startswith(cwd_real + os.sep):
-            return f"mv: отказ — источник вне текущей директории"
-        if not dst_abs.startswith(cwd_real + os.sep):
-            return f"mv: отказ — назначение вне текущей директории"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"mv: невозможно переместить '{src_arg}': Нет такого файла или каталога"
-        if src_abs == cwd_real:
-            return "mv: отказ — нельзя переместить текущую директорию"
         if dst_abs == src_abs:
             return f"mv: '{src_arg}' и '{dst_arg}' — один и тот же путь"
         if dst_abs.startswith(src_abs + os.sep):
@@ -324,10 +307,6 @@ class CommandExecutor:
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
             return f"mv: не удаётся переместить в '{dst_arg}': Нет такого каталога"
-
-        src_real = os.path.realpath(src_abs)
-        if src_real != src_abs and not os.path.islink(src_abs):
-            return f"mv: отказ — источник содержит симлинк наружу"
 
         try:
             os.rename(src_abs, final_dst)
@@ -348,14 +327,9 @@ class CommandExecutor:
             return "cp: укажите ровно два аргумента"
 
         src_arg, dst_arg = parts[0], parts[1]
-        cwd_real = os.path.realpath(self.cwd)
-        src_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(src_arg)))
-        dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
+        src_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(src_arg)))
+        dst_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(dst_arg)))
 
-        if not src_abs.startswith(cwd_real + os.sep):
-            return f"cp: отказ — источник вне текущей директории"
-        if not dst_abs.startswith(cwd_real + os.sep):
-            return f"cp: отказ — назначение вне текущей директории"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"cp: невозможно скопировать '{src_arg}': Нет такого файла или каталога"
         if dst_abs == src_abs:
@@ -374,10 +348,6 @@ class CommandExecutor:
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
             return f"cp: не удаётся скопировать в '{dst_arg}': Нет такого каталога"
-
-        src_real = os.path.realpath(src_abs)
-        if src_real != src_abs and not os.path.islink(src_abs):
-            return f"cp: отказ — источник содержит симлинк наружу"
 
         try:
             import shutil
@@ -402,13 +372,8 @@ class CommandExecutor:
             return False, "удаление нескольких объектов одновременно запрещено"
             
         target = parts[0]
-        cwd_real = os.path.realpath(self.cwd)
-        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+        raw_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(target)))
 
-        if not raw_abs.startswith(cwd_real + os.sep):
-            return False, f"путь вне текущей директории:\n{raw_abs}"
-        if raw_abs == cwd_real:
-            return False, "нельзя удалить текущую директорию"
         if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
             return False, f"нет такого файла или каталога: {target}"
 
@@ -447,19 +412,10 @@ class CommandExecutor:
             return "rm: удаление нескольких объектов одновременно запрещено"
             
         target = parts[0]
-        cwd_real = os.path.realpath(self.cwd)
-        raw_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(target)))
+        raw_abs = os.path.normpath(os.path.join(self.cwd, os.path.expanduser(target)))
 
-        if not raw_abs.startswith(cwd_real + os.sep):
-            return f"rm: отказ — путь вне текущей директории:\n    {raw_abs}"
-        if raw_abs == cwd_real:
-            return "rm: отказ — нельзя удалить текущую директорию"
         if not (os.path.exists(raw_abs) or os.path.islink(raw_abs)):
             return f"rm: '{target}': нет такого файла или каталога"
-
-        real_abs = os.path.realpath(raw_abs)
-        if real_abs != raw_abs and not os.path.islink(raw_abs):
-            return f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области"
 
         try:
             if os.path.islink(raw_abs) or os.path.isfile(raw_abs):
