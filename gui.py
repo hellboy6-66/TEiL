@@ -6,7 +6,7 @@ import shlex
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, 
-    QMessageBox, QApplication, QStackedWidget, QDialog
+    QMessageBox, QApplication, QStackedWidget, QDialog, QCompleter
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QEvent
 from PyQt6.QtGui import QTextCursor
@@ -50,6 +50,12 @@ class MainWindow(QMainWindow):
         self.history_pos = len(self.cmd_history)
         self.worker = None
         
+        # Список всех команд для автодополнения по Tab
+        self.all_cmd_names = []
+        for cat_cmds in CATEGORIES.values():
+            for cmd in cat_cmds:
+                self.all_cmd_names.append(cmd["name"])
+
         self._build_ui()
         self._update_cwd()
 
@@ -80,7 +86,7 @@ class MainWindow(QMainWindow):
         self.is_light_theme = False
         self.saved_cwd = os.path.expanduser("~")
         self.saved_history = []
-        self.max_history = 100  # Лимит по умолчанию
+        self.max_history = 100
         
         if os.path.exists(CONFIG_FILE):
             try:
@@ -116,13 +122,38 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(LIGHT_STYLESHEET if self.is_light_theme else DARK_STYLESHEET)
 
     def eventFilter(self, obj, event):
-        if obj == self.manual_input and event.type() == QEvent.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Up:
-                self._on_history_up()
+        # Проверяем, пришло ли событие от строки ввода ИЛИ от всплывающего окна подсказок
+        is_input = (obj == self.manual_input)
+        is_popup = (self.manual_input.completer() and obj == self.manual_input.completer().popup())
+        
+        if is_input or is_popup:
+            # Блокируем стандартную смену фокуса при нажатии Tab
+            if event.type() == QEvent.Type.ShortcutOverride and event.key() == Qt.Key.Key_Tab:
                 return True
-            elif event.key() == Qt.Key.Key_Down:
-                self._on_history_down()
-                return True
+                
+            if event.type() == QEvent.Type.KeyPress:
+                if event.key() == Qt.Key.Key_Up:
+                    self._on_history_up()
+                    return True
+                elif event.key() == Qt.Key.Key_Down:
+                    self._on_history_down()
+                    return True
+                elif event.key() == Qt.Key.Key_Tab:
+                    # 1. Выполняем автодополнение
+                    text = self.manual_input.text().strip().lower()
+                    if text:
+                        for cmd_name in self.all_cmd_names:
+                            if cmd_name.startswith(text):
+                                self.manual_input.setText(cmd_name)
+                                self.manual_input.setCursorPosition(len(cmd_name))
+                                break
+                    
+                    # 2. Закрываем подсказку и принудительно ставим фокус обратно в строку
+                    if self.manual_input.completer():
+                        self.manual_input.completer().popup().hide()
+                    self.manual_input.setFocus()
+                    return True
+                    
         return super().eventFilter(obj, event)
 
     def _build_ui(self):
@@ -209,6 +240,15 @@ class MainWindow(QMainWindow):
         self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
         self.manual_input.returnPressed.connect(self._on_manual_input)
         self.manual_input.installEventFilter(self)
+
+        # Настройка QCompleter
+        completer = QCompleter(self.all_cmd_names, self)
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion) 
+        self.manual_input.setCompleter(completer)
+        
+        # ВАЖНО: устанавливаем фильтр событий и на само всплывающее окно
+        completer.popup().installEventFilter(self)
 
         self.btn_history_up = QPushButton("⬆")
         self.btn_history_up.setToolTip("Предыдущая команда из истории (Стрелка Вверх)")
