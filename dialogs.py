@@ -89,22 +89,34 @@ class CommandDialog(QDialog):
 
 
 class HelpDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, is_light: bool, parent=None):
         super().__init__(parent)
         self.setWindowTitle("TEiL — Справочник команд Linux")
         self.resize(750, 600)
         layout = QVBoxLayout(self)
 
+        # Выбираем цвета в зависимости от темы
+        if is_light:
+            header_color = "#005a9e"  # Темно-синий
+            cmd_color = "#2e7d32"     # Темно-зеленый
+            text_color = "#333333"    # Темно-серый
+            hr_color = "#cccccc"      # Светло-серая линия
+        else:
+            header_color = "#89b4fa"  # Светло-синий
+            cmd_color = "#a6e3a1"     # Светло-зеленый
+            text_color = "#cdd6f4"    # Светло-серый
+            hr_color = "#313244"      # Темно-серая линия
+
         browser = QTextBrowser()
         html = "<html><body style='font-family: Consolas, monospace; font-size: 14px;'>"
         for block in MANUAL_DATA:
-            html += f"<h2 style='color: #89b4fa;'>{block['category']}</h2><ul>"
+            html += f"<h2 style='color: {header_color};'>{block['category']}</h2><ul>"
             for item in block['commands']:
                 html += f"<li style='margin-bottom: 12px;'>"
-                html += f"<b style='color: #a6e3a1;'>{item['cmd']}</b><br>"
-                html += f"<span style='color: #cdd6f4;'>{item['desc'].replace(chr(10), '<br>')}</span>"
+                html += f"<b style='color: {cmd_color};'>{item['cmd']}</b><br>"
+                html += f"<span style='color: {text_color};'>{item['desc'].replace(chr(10), '<br>')}</span>"
                 html += "</li>"
-            html += "</ul><hr>"
+            html += f"</ul><hr style='border: none; border-top: 1px solid {hr_color};'>"
         html += "</body></html>"
         
         browser.setHtml(html)
@@ -180,8 +192,11 @@ class SettingsDialog(QDialog):
         self.val_label.setText(str(value))
 
     def _open_manual(self):
-        dlg = HelpDialog(self)
+        # Передаем текущее состояние галочки "Светлая тема" в справочник,
+        # чтобы цвета текста соответствовали выбранному режиму
+        dlg = HelpDialog(self.light_cb.isChecked(), self)
         dlg.exec()
 
     def get_settings(self) -> tuple[bool, int]:
+        """Возвращает (светлая_тема, лимит_истории)."""
         return self.light_cb.isChecked(), self.history_slider.value()

@@ -53,12 +53,28 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._update_cwd()
 
-        self._append_output(
-            "Добро пожаловать в TEiL — эмулятор терминала Linux.\n"
-            "Вы можете нажимать кнопки слева или вводить команды вручную.\n"
-            "Кнопка ⬆ справа от строки ввода или клавиша Стрелка Вверх (⬆)\n"
-            "вызывает историю предыдущих команд.\n"
-        )
+        # Красивое HTML-приветствие
+        welcome_html = """
+        <div style="font-family: 'Consolas', 'DejaVu Sans Mono', monospace;">
+            <h1 style="margin-bottom: 0px; font-size: 28px;">TEiL</h1>
+            <p style="margin-top: 0px; font-size: 14px;"><b>Terminal Emulator in Linux</b></p>
+            <hr>
+            <p>Добро пожаловать в TEiL!</p>
+            <p><b>Как пользоваться:</b></p>
+            <ul>
+                <li>🖱️ <b>Кнопки слева:</b> выберите команду, настройте флаги и нажмите «Выполнить».</li>
+                <li>⌨️ <b>Ручной ввод:</b> введите команду в строке внизу и нажмите <i>Enter</i>.</li>
+            </ul>
+            <p><b>💡 Полезные советы:</b></p>
+            <ul>
+                <li>Используйте <b>⬆ (Стрелка Вверх)</b> на клавиатуре или кнопку <b>⬆</b> справа от ввода для вызова истории.</li>
+                <li>Откройте <b>⚙ Настройки</b> справа вверху, чтобы сменить тему или прочитать справочник команд.</li>
+            </ul>
+            <br>
+        </div>
+        """
+        self.output.insertHtml(welcome_html)
+        self.output.moveCursor(QTextCursor.MoveOperation.End)
 
     def load_config(self):
         self.is_light_theme = False
