@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QCheckBox, QGroupBox, QTextBrowser
+    QPushButton, QCheckBox, QGroupBox, QTextBrowser, QSlider
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from manual import MANUAL_DATA
@@ -12,7 +12,6 @@ def _is_single_letter_flag(flag: str) -> bool:
 
 
 class CommandDialog(QDialog):
-    """Диалог настройки и ввода команды."""
     def __init__(self, cmd: dict, parent=None):
         super().__init__(parent)
         self.cmd = cmd
@@ -90,7 +89,6 @@ class CommandDialog(QDialog):
 
 
 class HelpDialog(QDialog):
-    """Окно справочника по командам Linux."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("TEiL — Справочник команд Linux")
@@ -118,24 +116,42 @@ class HelpDialog(QDialog):
 
 
 class SettingsDialog(QDialog):
-    """Окно настроек приложения."""
-    theme_changed = pyqtSignal(bool)
-
-    def __init__(self, is_light: bool, parent=None):
+    def __init__(self, is_light: bool, max_history: int, parent=None):
         super().__init__(parent)
         self.setWindowTitle("TEiL — Настройки")
         self.setMinimumWidth(350)
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
+        # --- Блок оформления ---
         theme_group = QGroupBox("Оформление")
         tl = QVBoxLayout(theme_group)
         self.light_cb = QCheckBox("Светлая тема")
         self.light_cb.setChecked(is_light)
-        self.light_cb.stateChanged.connect(self._on_theme_toggled)
         tl.addWidget(self.light_cb)
         layout.addWidget(theme_group)
 
+        # --- Блок истории (Ползунок) ---
+        history_group = QGroupBox("История команд")
+        hl_hist = QVBoxLayout(history_group)
+        
+        label_layout = QHBoxLayout()
+        label_layout.addWidget(QLabel("Хранить последних команд:"))
+        self.val_label = QLabel(str(max_history))
+        self.val_label.setStyleSheet("font-weight: bold; color: #89b4fa;")
+        label_layout.addWidget(self.val_label)
+        label_layout.addStretch()
+        hl_hist.addLayout(label_layout)
+        
+        self.history_slider = QSlider(Qt.Orientation.Horizontal)
+        self.history_slider.setRange(10, 100)
+        self.history_slider.setValue(max_history)
+        self.history_slider.valueChanged.connect(self._on_slider_changed)
+        hl_hist.addWidget(self.history_slider)
+        
+        layout.addWidget(history_group)
+
+        # --- Блок помощи ---
         help_group = QGroupBox("Помощь")
         hl = QVBoxLayout(help_group)
         btn_manual = QPushButton("Открыть справочник команд")
@@ -145,16 +161,27 @@ class SettingsDialog(QDialog):
 
         layout.addStretch()
         
+        # --- Кнопки Сохранить / Отмена ---
         btns = QHBoxLayout()
         btns.addStretch(1)
-        btn_close = QPushButton("Закрыть")
-        btn_close.clicked.connect(self.accept)
-        btns.addWidget(btn_close)
+        
+        cancel = QPushButton("Отмена")
+        cancel.clicked.connect(self.reject)
+        btns.addWidget(cancel)
+        
+        save = QPushButton("Сохранить")
+        save.setDefault(True)
+        save.clicked.connect(self.accept)
+        btns.addWidget(save)
+        
         layout.addLayout(btns)
 
-    def _on_theme_toggled(self):
-        self.theme_changed.emit(self.light_cb.isChecked())
+    def _on_slider_changed(self, value):
+        self.val_label.setText(str(value))
 
     def _open_manual(self):
         dlg = HelpDialog(self)
         dlg.exec()
+
+    def get_settings(self) -> tuple[bool, int]:
+        return self.light_cb.isChecked(), self.history_slider.value()

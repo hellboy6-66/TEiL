@@ -8,8 +8,10 @@ QMainWindow, QWidget {
 QLabel#cwdLabel { color: #89b4fa; font-weight: bold; padding: 4px 8px; background-color: #11111b; border-radius: 4px; }
 QLabel#sectionTitle { color: #a6e3a1; font-weight: bold; padding: 4px 2px; }
 QLabel#preview { color: #a6e3a1; background-color: #11111b; padding: 6px 8px; border-radius: 4px; font-family: "Consolas", monospace; }
-QLineEdit { background-color: #11111b; border: 1px solid #313244; border-radius: 4px; padding: 5px 8px; color: #cdd6f4; }
-QLineEdit:focus { border: 1px solid #89b4fa; }
+QLineEdit, QSpinBox { background-color: #11111b; border: 1px solid #313244; border-radius: 4px; padding: 5px 8px; color: #cdd6f4; }
+QLineEdit:focus, QSpinBox:focus { border: 1px solid #89b4fa; }
+QSpinBox::up-button, QSpinBox::down-button { background-color: #313244; width: 16px; border-radius: 2px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #45475a; }
 QTextEdit#output { background-color: #11111b; border: 1px solid #313244; border-radius: 6px; padding: 8px; color: #a6e3a1; font-family: "Consolas", monospace; }
 QTabWidget::pane { border: 1px solid #313244; border-radius: 6px; background: #181825; }
 QPushButton#tabButton { background-color: #181825; color: #bac2de; border: 1px solid #313244; border-radius: 4px; padding: 6px 14px; font-weight: normal; min-height: 22px; text-align: center; }
@@ -35,6 +37,11 @@ QCheckBox { color: #cdd6f4; padding: 2px; }
 QCheckBox::indicator { width: 15px; height: 15px; }
 QMessageBox, QDialog { background-color: #1e1e2e; }
 QTextBrowser { background-color: #11111b; color: #cdd6f4; border: 1px solid #313244; border-radius: 6px; }
+
+/* Стили для ползунка (Светлая тема - Темная) */
+QSlider::groove:horizontal { border: 1px solid #313244; height: 6px; background: #11111b; border-radius: 3px; }
+QSlider::sub-page:horizontal { background: #89b4fa; border-radius: 3px; }
+QSlider::handle:horizontal { background: #cdd6f4; border: 2px solid #89b4fa; width: 14px; height: 14px; margin: -5px 0; border-radius: 8px; }
 """
 
 LIGHT_STYLESHEET = """
@@ -45,8 +52,10 @@ QMainWindow, QWidget {
 QLabel#cwdLabel { color: #005a9e; font-weight: bold; padding: 4px 8px; background-color: #e0e0e0; border-radius: 4px; }
 QLabel#sectionTitle { color: #2e7d32; font-weight: bold; padding: 4px 2px; }
 QLabel#preview { color: #2e7d32; background-color: #e8f5e9; padding: 6px 8px; border-radius: 4px; border: 1px solid #c8e6c9; font-family: "Consolas", monospace; }
-QLineEdit { background-color: #ffffff; border: 1px solid #cccccc; border-radius: 4px; padding: 5px 8px; color: #333333; }
-QLineEdit:focus { border: 1px solid #005a9e; }
+QLineEdit, QSpinBox { background-color: #ffffff; border: 1px solid #cccccc; border-radius: 4px; padding: 5px 8px; color: #333333; }
+QLineEdit:focus, QSpinBox:focus { border: 1px solid #005a9e; }
+QSpinBox::up-button, QSpinBox::down-button { background-color: #e0e0e0; width: 16px; border-radius: 2px; }
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #cccccc; }
 QTextEdit#output { background-color: #ffffff; border: 1px solid #cccccc; border-radius: 6px; padding: 8px; color: #1b5e20; font-family: "Consolas", monospace; }
 QTabWidget::pane { border: 1px solid #cccccc; border-radius: 6px; background: #ffffff; }
 QPushButton#tabButton { background-color: #ffffff; color: #555555; border: 1px solid #cccccc; border-radius: 4px; padding: 6px 14px; font-weight: normal; min-height: 22px; text-align: center; }
@@ -72,4 +81,9 @@ QCheckBox { color: #333333; padding: 2px; }
 QCheckBox::indicator { width: 15px; height: 15px; }
 QMessageBox, QDialog { background-color: #f5f5f5; }
 QTextBrowser { background-color: #ffffff; color: #333333; border: 1px solid #cccccc; border-radius: 6px; }
+
+/* Стили для ползунка (Светлая тема) */
+QSlider::groove:horizontal { border: 1px solid #cccccc; height: 6px; background: #f0f0f0; border-radius: 3px; }
+QSlider::sub-page:horizontal { background: #005a9e; border-radius: 3px; }
+QSlider::handle:horizontal { background: #ffffff; border: 2px solid #005a9e; width: 14px; height: 14px; margin: -5px 0; border-radius: 8px; }
 """

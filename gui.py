@@ -42,12 +42,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("TEiL — Terminal Emulator in Linux")
         self.resize(1150, 720)
         
-        self.is_light_theme = self.load_theme_setting()
+        self.load_config()
         self.apply_theme()
 
-        self.executor = CommandExecutor()
-        self.cmd_history = []
-        self.history_pos = 0
+        self.executor = CommandExecutor(self.saved_cwd)
+        self.cmd_history = self.saved_history
+        self.history_pos = len(self.cmd_history)
         self.worker = None
         
         self._build_ui()
@@ -60,39 +60,54 @@ class MainWindow(QMainWindow):
             "вызывает историю предыдущих команд.\n"
         )
 
-    # ------------------------------------------------------------- Event Filter
-    def eventFilter(self, obj, event):
-        """Перехватывает нажатия клавиш в строке ручного ввода."""
-        if obj == self.manual_input and event.type() == QEvent.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Up:
-                self._on_history_up()
-                return True  # Поглощаем событие, чтобы курсор не прыгал в начало
-            elif event.key() == Qt.Key.Key_Down:
-                self._on_history_down()
-                return True
-        return super().eventFilter(obj, event)
-
-    def load_theme_setting(self) -> bool:
+    def load_config(self):
+        self.is_light_theme = False
+        self.saved_cwd = os.path.expanduser("~")
+        self.saved_history = []
+        self.max_history = 100  # Лимит по умолчанию
+        
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    return data.get("is_light_theme", False)
+                    self.is_light_theme = data.get("is_light_theme", False)
+                    self.saved_cwd = data.get("cwd", os.path.expanduser("~"))
+                    self.saved_history = data.get("history", [])
+                    self.max_history = data.get("max_history", 100)
             except Exception:
-                return False
-        return False
+                pass
 
-    def save_theme_setting(self):
+    def save_config(self):
+        data = {
+            "is_light_theme": self.is_light_theme,
+            "cwd": self.executor.cwd,
+            "history": self.cmd_history,
+            "max_history": self.max_history
+        }
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump({"is_light_theme": self.is_light_theme}, f, indent=4)
+                json.dump(data, f, indent=4)
         except Exception as e:
             print(f"Не удалось сохранить настройки: {e}")
+
+    def closeEvent(self, event):
+        self.save_config()
+        super().closeEvent(event)
 
     def apply_theme(self):
         app = QApplication.instance()
         if app:
             app.setStyleSheet(LIGHT_STYLESHEET if self.is_light_theme else DARK_STYLESHEET)
+
+    def eventFilter(self, obj, event):
+        if obj == self.manual_input and event.type() == QEvent.Type.KeyPress:
+            if event.key() == Qt.Key.Key_Up:
+                self._on_history_up()
+                return True
+            elif event.key() == Qt.Key.Key_Down:
+                self._on_history_down()
+                return True
+        return super().eventFilter(obj, event)
 
     def _build_ui(self):
         central = QWidget()
@@ -171,15 +186,12 @@ class MainWindow(QMainWindow):
         self.output.setReadOnly(True)
         right.addWidget(self.output, 1)
 
-        # --- Строка ввода и кнопка истории ---
         input_layout = QHBoxLayout()
         input_layout.setSpacing(4)
 
         self.manual_input = QLineEdit()
         self.manual_input.setPlaceholderText("Введите команду (например: ls -la) и нажмите Enter...")
         self.manual_input.returnPressed.connect(self._on_manual_input)
-        
-        # Устанавливаем фильтр событий для перехвата стрелок клавиатуры
         self.manual_input.installEventFilter(self)
 
         self.btn_history_up = QPushButton("⬆")
@@ -190,7 +202,6 @@ class MainWindow(QMainWindow):
         input_layout.addWidget(self.manual_input)
         input_layout.addWidget(self.btn_history_up)
         right.addLayout(input_layout)
-        # -------------------------------------
 
         clear_btn = QPushButton("Очистить вывод")
         clear_btn.clicked.connect(self.output.clear)
@@ -239,26 +250,20 @@ class MainWindow(QMainWindow):
         self.search_scroll.verticalScrollBar().setValue(0)
 
     def _on_history_up(self):
-        """Прокручивает историю команд вверх (назад)."""
         if not self.cmd_history:
             return
-        
         self.history_pos -= 1
         if self.history_pos < 0:
             self.history_pos = len(self.cmd_history) - 1
-            
         self.manual_input.setText(self.cmd_history[self.history_pos])
         self.manual_input.setCursorPosition(len(self.manual_input.text()))
 
     def _on_history_down(self):
-        """Прокручивает историю команд вниз (вперед)."""
         if not self.cmd_history:
             return
-        
         self.history_pos += 1
         if self.history_pos >= len(self.cmd_history):
             self.history_pos = 0
-            
         self.manual_input.setText(self.cmd_history[self.history_pos])
         self.manual_input.setCursorPosition(len(self.manual_input.text()))
 
@@ -290,14 +295,19 @@ class MainWindow(QMainWindow):
                                 f"(в TEiL ручной ввод доступен только для команд из меню)")
 
     def _open_settings(self):
-        dlg = SettingsDialog(self.is_light_theme, self)
-        dlg.theme_changed.connect(self._change_theme)
-        dlg.exec()
-
-    def _change_theme(self, is_light: bool):
-        self.is_light_theme = is_light
-        self.apply_theme()
-        self.save_theme_setting()
+        dlg = SettingsDialog(self.is_light_theme, self.max_history, self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            is_light, limit = dlg.get_settings()
+            
+            self.is_light_theme = is_light
+            self.apply_theme()
+            
+            self.max_history = limit
+            if len(self.cmd_history) > self.max_history:
+                self.cmd_history = self.cmd_history[-self.max_history:]
+                self.history_pos = len(self.cmd_history)
+                
+            self.save_config()
 
     def _build_tabs(self):
         for category, commands in CATEGORIES.items():
@@ -345,7 +355,6 @@ class MainWindow(QMainWindow):
     def _execute(self, full_cmd: str, cmd: dict):
         name = cmd["name"]
 
-        # --- Специальные виртуальные команды ---
         if name == "clear":
             self.output.clear()
             return
@@ -361,6 +370,10 @@ class MainWindow(QMainWindow):
         if full_cmd not in ("clear", "history"):
             self.cmd_history.append(full_cmd)
             self.history_pos = len(self.cmd_history)
+            
+            if len(self.cmd_history) > self.max_history:
+                self.cmd_history = self.cmd_history[-self.max_history:]
+                self.history_pos = len(self.cmd_history)
 
         self._append_output(f"\n$ {full_cmd}")
         handler = cmd.get("safe_handler")

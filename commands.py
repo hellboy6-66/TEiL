@@ -17,34 +17,28 @@ CATEGORIES = {
          "flags": ["-f", "-I"]},
         {"name": "echo",     "desc": "Вывести строку",
          "arg_placeholder": "текст"},
-        {"name": "clear",    "desc": "Очистить экран терминала",
-         "instant": True},
-        {"name": "history",  "desc": "Показать историю введенных команд",
-         "instant": True},
+        {"name": "clear",    "desc": "Очистить экран терминала", "instant": True},
+        {"name": "history",  "desc": "Показать историю введенных команд", "instant": True},
     ],
 
     "Файлы и папки": [
         {"name": "ls", "desc": "Список файлов",
-         "flags": ["-l", "-a", "-h", "-t", "-r"], # <-- Добавлены -t и -r
+         "flags": ["-l", "-a", "-h", "-t", "-r"],
          "arg_placeholder": "путь (необязательно)"},
         {"name": "cd", "desc": "Сменить директорию",
          "arg_placeholder": "путь (например /tmp)"},
         {"name": "df", "desc": "Свободное место на дисках",
          "flags": ["-h", "-T"]},
         {"name": "du", "desc": "Размер директории",
-         "flags": ["-s", "-h"],
-         "arg_placeholder": "путь"},
+         "flags": ["-s", "-h"], "arg_placeholder": "путь"},
         {"name": "find", "desc": "Поиск файлов",
          "arg_placeholder": ". -maxdepth 1 -type f"},
         {"name": "file", "desc": "Определить тип файла по содержимому",
-         "flags": ["-b", "-i", "-L"],
-         "arg_placeholder": "файл (например note.txt)"},
-        {"name": "stat", "desc": "Подробная информация о файле (права, дата, размер)",
-         "flags": ["-t", "-f", "-L"],
-         "arg_placeholder": "файл (например note.txt)"},
-        {"name": "which", "desc": "Показать путь к исполняемому файлу команды",
-         "flags": ["-a"],
-         "arg_placeholder": "команда (например ls)"},
+         "flags": ["-b", "-i", "-L"], "arg_placeholder": "файл (например note.txt)"},
+        {"name": "stat", "desc": "Подробная информация о файле",
+         "flags": ["-t", "-f", "-L"], "arg_placeholder": "файл (например note.txt)"},
+        {"name": "which", "desc": "Показать путь к исполняемому файлу",
+         "flags": ["-a"], "arg_placeholder": "команда (например ls)"},
         {"name": "cat", "desc": "Содержимое файла",
          "arg_placeholder": "файл (например /etc/os-release)"},
         {"name": "head", "desc": "Первые строки файла",
@@ -52,17 +46,15 @@ CATEGORIES = {
         {"name": "tail", "desc": "Последние строки файла",
          "arg_placeholder": "-n 10 файл (по умолчанию 10 строк)"},
         {"name": "grep", "desc": "Поиск по шаблону",
-         "flags": ["-i", "-n", "-r", "-v", "-c", "-w"], # <-- Добавлены -v, -c, -w
+         "flags": ["-i", "-n", "-r", "-v", "-c", "-w"],
          "arg_placeholder": "шаблон [файл] (например root /etc/passwd)"},
         {"name": "wc", "desc": "Подсчёт строк, слов и символов",
-         "flags": ["-l", "-w", "-c"],
-         "arg_placeholder": "файл (например note.txt)"},
+         "flags": ["-l", "-w", "-c"], "arg_placeholder": "файл (например note.txt)"},
         {"name": "sort", "desc": "Сортировка строк текста (вывод в консоль)",
-         "flags": ["-r", "-n", "-u"],
-         "arg_placeholder": "файл (например note.txt)"},
+         "flags": ["-r", "-n", "-u"], "arg_placeholder": "файл (например note.txt)"},
         {"name": "uniq", "desc": "Удаление повторяющихся строк (вывод в консоль)",
          "arg_placeholder": "файл (например sorted.txt)"},
-        {"name": "cut", "desc": "Вырезание колонок из текста (укажите разделитель и номер колонки)",
+        {"name": "cut", "desc": "Вырезание колонок из текста",
          "arg_placeholder": "-d ' ' -f 1 файл.txt (разделитель и поле)"},
         {"name": "diff", "desc": "Сравнить два файла и показать различия",
          "arg_placeholder": "file1.txt file2.txt"},
@@ -70,51 +62,40 @@ CATEGORIES = {
          "arg_placeholder": "имя файла (например file{1..3}.txt)",
          "safe_handler": "touch"},
         {"name": "mkdir", "desc": "Создать каталог (поддерживает скобки и пробелы)",
-         "flags": ["-p"],
-         "arg_placeholder": "имена каталогов (например dir{1..3} other_dir)",
+         "flags": ["-p"], "arg_placeholder": "имена каталогов (например dir{1..3} other_dir)",
          "safe_handler": "mkdir"},
-        {"name": "mv", "desc": "Переместить/переименовать (только внутри текущей директории)",
+        {"name": "mv", "desc": "Переместить/переименовать",
          "arg_placeholder": "источник назначение (например note.txt notes/note.txt)",
          "safe_handler": "mv"},
-        {"name": "cp", "desc": "Копировать (только внутри текущей директории)",
-         "flags": ["-r"],
-         "arg_placeholder": "источник назначение (например note.txt notes/copy.txt)",
+        {"name": "cp", "desc": "Копировать",
+         "flags": ["-r"], "arg_placeholder": "источник назначение (например note.txt notes/copy.txt)",
          "safe_handler": "cp"},
-        {"name": "rm", "desc": "Удалить файл или пустой каталог "
-                               "(только внутри текущей директории, с подтверждением)",
+        {"name": "rm", "desc": "Удалить файл или пустой каталог (с подтверждением)",
          "arg_placeholder": "файл или каталог (например note.txt)",
          "safe_handler": "rm"},
     ],
 
     "Сеть": [
-        {"name": "ip", "desc": "Сетевые интерфейсы",
-         "arg_placeholder": "addr / route / link"},
+        {"name": "ip", "desc": "Сетевые интерфейсы", "arg_placeholder": "addr / route / link"},
         {"name": "ping", "desc": "Проверка связи",
-         "flags": ["-c 2", "-c 4", "-c 10"],
-         "arg_placeholder": "хост (например 8.8.8.8)"},
+         "flags": ["-c 2", "-c 4", "-c 10"], "arg_placeholder": "хост (например 8.8.8.8)"},
         {"name": "curl", "desc": "HTTP-запрос",
-         "flags": ["-s", "-I", "-L"],
-         "arg_placeholder": "URL"},
+         "flags": ["-s", "-I", "-L"], "arg_placeholder": "URL"},
         {"name": "ss", "desc": "Открытые порты и сетевые соединения",
-         "flags": ["-t", "-u", "-l", "-p", "-n"],
-         "arg_placeholder": "флаги (например -tulpn)"},
-        {"name": "dig", "desc": "Проверка DNS-записей домена",
-         "arg_placeholder": "домен (например google.com)"},
+         "flags": ["-t", "-u", "-l", "-p", "-n"], "arg_placeholder": "флаги (например -tulpn)"},
+        {"name": "dig", "desc": "Проверка DNS-записей домена", "arg_placeholder": "домен (например google.com)"},
         {"name": "tracepath", "desc": "Показать маршрут до узла (может занять время)",
-         "flags": ["-m 10", "-m 15", "-m 20"],
-         "arg_placeholder": "хост (например 8.8.8.8)"},
+         "flags": ["-m 10", "-m 15", "-m 20"], "arg_placeholder": "хост (например 8.8.8.8)"},
     ],
 
     "Процессы": [
         {"name": "ps", "desc": "Список процессов",
-         "flags": ["aux", "-ef", "| head -n 15"], # <-- Добавлено ограничение вывода
-         "arg_placeholder": "флаги"},
+         "flags": ["aux", "-ef", "| head -n 15"], "arg_placeholder": "флаги"},
         {"name": "uptime", "desc": "Время работы системы", "instant": True},
         {"name": "free", "desc": "Использование памяти",
          "flags": ["-h", "-m"]},
         {"name": "top", "desc": "Снимок нагрузки на систему (безопасный)",
-         "flags": ["-bn1", "| head -n 15"], # <-- Добавлено ограничение вывода
-         "arg_placeholder": "(оставьте пустым для стандартного вывода)"},
+         "flags": ["-bn1", "| head -n 15"], "arg_placeholder": "(оставьте пустым)"},
     ],
 
     "Система": [
@@ -131,16 +112,17 @@ class CommandExecutor:
     TIMEOUT = 10
 
     def __init__(self, start_dir: str | None = None):
-        self.cwd = start_dir or os.path.expanduser("~")
+        initial = start_dir or os.path.expanduser("~")
+        if not os.path.isdir(initial):
+            initial = os.path.expanduser("~")
+        self.cwd = initial
 
-    # ------------------------------------------------ парсинг аргументов
     def _parse_args(self, arg_str: str) -> list[str]:
         try:
             return shlex.split(arg_str)
         except ValueError:
             return arg_str.split()
 
-    # ------------------------------------------------ обычное выполнение
     def execute(self, cmd: str) -> str:
         base_cmd = cmd.split()[0] if cmd.split() else ""
         
@@ -164,17 +146,15 @@ class CommandExecutor:
             if "command not found" in out or "не найдена" in out:
                 out += f"\n\n[!] Подсказка от TEiL: Утилита '{base_cmd}' не установлена в вашей системе.\n"
                 out += f"    Попробуйте установить её через терминал: sudo apt install {base_cmd}\n"
-                out += f"    Или проверьте правильность написания."
 
             if not out.strip():
                 out = "[команда выполнена без вывода]"
             return out
         except subprocess.TimeoutExpired:
-            return f"[!] Команда превысила лимит времени ({timeout} с).\nВозможно, сеть блокирует пакеты или интернет недоступен."
+            return f"[!] Команда превысила лимит времени ({timeout} с).\nВозможно, сеть блокирует пакеты."
         except Exception as e:
             return f"[!] Ошибка выполнения: {e}"
 
-    # ------------------------------------------------ смена директории
     def change_dir(self, path: str) -> tuple[bool, str]:
         parts = self._parse_args(path)
         if not parts:
@@ -189,7 +169,6 @@ class CommandExecutor:
             return True, ""
         return False, f"cd: нет такого каталога: {path}"
 
-    # ------------------------------------------------ эмуляция фигурных скобок
     def _expand_braces(self, text: str) -> list[str]:
         match = re.search(r'\{([^{}]+)\}', text)
         if not match:
@@ -221,7 +200,6 @@ class CommandExecutor:
             results.extend(self._expand_braces(new_text))
         return results
 
-    # ------------------------------------------------ безопасный touch
     def safe_touch(self, target: str) -> str:
         raw_tokens = self._parse_args(target)
         if not raw_tokens:
@@ -262,10 +240,8 @@ class CommandExecutor:
             result.append(f"touch: успешно создано/обновлено файлов: {success_count}")
         if errors:
             result.extend(errors)
-            
         return "\n".join(result)
 
-    # ------------------------------------------------ безопасный mkdir (мульти-режим и скобки)
     def safe_mkdir(self, target: str, parents: bool) -> str:
         raw_tokens = self._parse_args(target)
         if not raw_tokens:
@@ -312,15 +288,12 @@ class CommandExecutor:
             result.append(f"mkdir: успешно создано каталогов: {success_count}")
         if errors:
             result.extend(errors)
-            
         return "\n".join(result)
 
-    # ------------------------------------------------ безопасный mv
     def safe_mv(self, args: str) -> str:
         parts = self._parse_args(args)
         if len(parts) != 2:
-            return ("mv: укажите ровно два аргумента (источник и назначение)\n"
-                    "например: mv \"my file.txt\" notes/")
+            return "mv: укажите ровно два аргумента (источник и назначение)"
 
         src_arg, dst_arg = parts[0], parts[1]
         cwd_real = os.path.realpath(self.cwd)
@@ -328,9 +301,9 @@ class CommandExecutor:
         dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
 
         if not src_abs.startswith(cwd_real + os.sep):
-            return f"mv: отказ — источник вне текущей директории:\n    {src_abs}"
+            return f"mv: отказ — источник вне текущей директории"
         if not dst_abs.startswith(cwd_real + os.sep):
-            return f"mv: отказ — назначение вне текущей директории:\n    {dst_abs}"
+            return f"mv: отказ — назначение вне текущей директории"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"mv: невозможно переместить '{src_arg}': Нет такого файла или каталога"
         if src_abs == cwd_real:
@@ -346,20 +319,18 @@ class CommandExecutor:
             final_dst = dst_abs
 
         if os.path.exists(final_dst) or os.path.islink(final_dst):
-            return f"mv: отказ — назначение уже существует:\n    {final_dst}"
+            return f"mv: отказ — назначение уже существует"
 
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
-            return f"mv: не удаётся переместить в '{dst_arg}': Нет такого каталога: {dst_parent}"
+            return f"mv: не удаётся переместить в '{dst_arg}': Нет такого каталога"
 
         src_real = os.path.realpath(src_abs)
         if src_real != src_abs and not os.path.islink(src_abs):
-            return f"mv: отказ — источник содержит симлинк наружу:\n    {src_abs} -> {src_real}"
+            return f"mv: отказ — источник содержит симлинк наружу"
 
         try:
             os.rename(src_abs, final_dst)
-            if os.path.isdir(dst_abs) and not os.path.islink(dst_abs) and dst_abs != final_dst:
-                return f"mv: '{src_arg}' -> '{os.path.relpath(final_dst, cwd_real)}'"
             return f"mv: перемещено: {src_arg} -> {dst_arg}"
         except OSError:
             try:
@@ -368,17 +339,13 @@ class CommandExecutor:
                 return f"mv: перемещено: {src_arg} -> {dst_arg}"
             except Exception as e2:
                 return f"mv: ошибка: {e2}"
-        except PermissionError:
-            return f"mv: '{src_arg}': нет прав на перемещение"
         except Exception as e:
             return f"mv: ошибка: {e}"
 
-    # ------------------------------------------------ безопасный cp
     def safe_cp(self, args: str, recursive: bool) -> str:
         parts = self._parse_args(args)
         if len(parts) != 2:
-            return ("cp: укажите ровно два аргумента (источник и назначение)\n"
-                    "например: cp \"my file.txt\" copy.txt")
+            return "cp: укажите ровно два аргумента"
 
         src_arg, dst_arg = parts[0], parts[1]
         cwd_real = os.path.realpath(self.cwd)
@@ -386,9 +353,9 @@ class CommandExecutor:
         dst_abs = os.path.normpath(os.path.join(cwd_real, os.path.expanduser(dst_arg)))
 
         if not src_abs.startswith(cwd_real + os.sep):
-            return f"cp: отказ — источник вне текущей директории:\n    {src_abs}"
+            return f"cp: отказ — источник вне текущей директории"
         if not dst_abs.startswith(cwd_real + os.sep):
-            return f"cp: отказ — назначение вне текущей директории:\n    {dst_abs}"
+            return f"cp: отказ — назначение вне текущей директории"
         if not (os.path.exists(src_abs) or os.path.islink(src_abs)):
             return f"cp: невозможно скопировать '{src_arg}': Нет такого файла или каталога"
         if dst_abs == src_abs:
@@ -402,15 +369,15 @@ class CommandExecutor:
             final_dst = dst_abs
 
         if os.path.exists(final_dst) or os.path.islink(final_dst):
-            return f"cp: отказ — назначение уже существует:\n    {final_dst}"
+            return f"cp: отказ — назначение уже существует"
 
         dst_parent = os.path.dirname(final_dst)
         if not os.path.isdir(dst_parent):
-            return f"cp: не удаётся скопировать в '{dst_arg}': Нет такого каталога: {dst_parent}"
+            return f"cp: не удаётся скопировать в '{dst_arg}': Нет такого каталога"
 
         src_real = os.path.realpath(src_abs)
         if src_real != src_abs and not os.path.islink(src_abs):
-            return f"cp: отказ — источник содержит симлинк наружу:\n    {src_abs} -> {src_real}"
+            return f"cp: отказ — источник содержит симлинк наружу"
 
         try:
             import shutil
@@ -427,7 +394,6 @@ class CommandExecutor:
         except Exception as e:
             return f"cp: ошибка: {e}"
 
-    # ------------------------------------------------ описание цели для rm
     def describe_target(self, target: str) -> tuple[bool, str]:
         parts = self._parse_args(target)
         if len(parts) == 0:
@@ -447,29 +413,20 @@ class CommandExecutor:
             return False, f"нет такого файла или каталога: {target}"
 
         if os.path.islink(raw_abs):
-            try:
-                pointed = os.readlink(raw_abs)
-            except Exception:
-                pointed = "?"
-            return True, f"символическая ссылка:\n{raw_abs} -> {pointed}"
-
+            return True, f"символическая ссылка:\n{raw_abs}"
         if os.path.isfile(raw_abs):
             try:
                 size = os.path.getsize(raw_abs)
             except Exception:
                 size = 0
             return True, f"файл ({self._human_size(size)}):\n{raw_abs}"
-
         if os.path.isdir(raw_abs):
             try:
                 items = os.listdir(raw_abs)
             except Exception:
                 items = []
             if items:
-                return False, (
-                    f"каталог НЕ пуст ({len(items)} элементов):\n{raw_abs}\n"
-                    f"удаление непустых каталогов запрещено"
-                )
+                return False, f"каталог НЕ пуст ({len(items)} элементов):\n{raw_abs}\nудаление непустых каталогов запрещено"
             return True, f"пустой каталог:\n{raw_abs}"
 
         return False, f"неизвестный тип файла:\n{raw_abs}"
@@ -482,7 +439,6 @@ class CommandExecutor:
             if n < 1024: return f"{n:.1f} {unit}"
         return f"{n:.1f} PB"
 
-    # ------------------------------------------------ безопасный rm
     def safe_rm(self, target: str) -> str:
         parts = self._parse_args(target)
         if len(parts) == 0:
@@ -503,7 +459,7 @@ class CommandExecutor:
 
         real_abs = os.path.realpath(raw_abs)
         if real_abs != raw_abs and not os.path.islink(raw_abs):
-            return f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области:\n    {raw_abs} -> {real_abs}"
+            return f"rm: отказ — в пути есть симлинк, ведущий за пределы рабочей области"
 
         try:
             if os.path.islink(raw_abs) or os.path.isfile(raw_abs):
