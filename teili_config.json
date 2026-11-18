@@ -1,17 +1,17 @@
 {
     "is_light_theme": false,
-    "cwd": "/home/arseniy",
+    "cwd": "/home/arseniy/practice",
     "history": [
-        "ls",
-        "ls",
-        "mkdir practice",
-        "cd practice",
-        "touch note.txt",
-        "ls",
+        "cat hello.txt",
+        "cp hello.txt copy.txt",
+        "mv note.txt backup.txt",
+        "mv copy.txt backup.txt",
+        "wc hello.txt",
+        "which ls",
+        "uptime",
         "rm note.txt",
-        "mkdir practice",
-        "cd /home/arseniy",
-        "mkdir practice"
+        "rm backup.txt",
+        "rm hello.txt"
     ],
     "max_history": 10,
     "lesson_idx": 0
