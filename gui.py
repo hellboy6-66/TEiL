@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QSplitter, QTreeView, QHeaderView
 )
 from PyQt6.QtCore import Qt, QEvent
-# QFileSystemModel находится в QtGui в PyQt6
 from PyQt6.QtGui import QTextCursor, QFileSystemModel
 
 from commands import CATEGORIES, CommandExecutor
@@ -127,7 +126,6 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(8)
 
-        # Шапка
         header = QHBoxLayout()
         header.addWidget(QLabel("Текущая директория:"))
         self.cwd_label = QLabel()
@@ -142,7 +140,6 @@ class MainWindow(QMainWindow):
 
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 1. Левая панель (Дерево файлов)
         self.tree_view = QTreeView()
         self.file_model = QFileSystemModel()
         self.file_model.setRootPath(self.executor.cwd)
@@ -156,7 +153,6 @@ class MainWindow(QMainWindow):
         
         self.main_splitter.addWidget(self.tree_view)
 
-        # 2. Центральная панель (Терминал)
         terminal_panel = QWidget()
         term_layout = QVBoxLayout(terminal_panel)
         term_layout.setContentsMargins(0, 0, 0, 0)
@@ -199,7 +195,6 @@ class MainWindow(QMainWindow):
         
         self.main_splitter.addWidget(terminal_panel)
 
-        # 3. Правая панель (Команды)
         commands_panel = QWidget()
         commands_panel.setMinimumWidth(300)
         cmd_layout = QVBoxLayout(commands_panel)
@@ -356,7 +351,6 @@ class MainWindow(QMainWindow):
         self.lesson_dlg.raise_()
         self.lesson_dlg.activateWindow()
         
-        # Сразу проверяем состояние файловой системы (вдруг шаг уже выполнен)
         self.lesson_dlg.check_command(self.last_executed_cmd, self.executor.cwd)
 
     def _on_lesson_closed(self):

@@ -3,7 +3,7 @@
 import os
 import json
 
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "teili_config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "teil_config.json")
 
 def load_settings() -> dict:
     defaults = {
@@ -11,7 +11,7 @@ def load_settings() -> dict:
         "cwd": os.path.expanduser("~"),
         "history": [],
         "max_history": 100,
-        "lesson_idx": 0  # <-- Сохранение прогресса
+        "lesson_idx": 0  
     }
     
     if os.path.exists(CONFIG_FILE):

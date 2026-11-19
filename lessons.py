@@ -3,7 +3,6 @@
 import os
 
 LESSONS = [
-    # --- БЛОК 1: Базовые операции с файлами ---
     {
         "title": "Шаг 1: Создание папки",
         "desc": "Создайте папку с именем practice.\nВведите в терминале или выберите в меню: mkdir practice",
@@ -25,7 +24,6 @@ LESSONS = [
         "check": lambda cwd, cmd: "ls" in cmd.strip()
     },
 
-    # --- БЛОК 2: Работа с текстом и копирование ---
     {
         "title": "Шаг 5: Запись текста в файл",
         "desc": "Создайте файл с текстом, используя перенаправление вывода.\nВведите: echo 'Hello TEiL' > hello.txt",
@@ -47,7 +45,6 @@ LESSONS = [
         "check": lambda cwd, cmd: os.path.isfile(os.path.join(cwd, "backup.txt")) and not os.path.exists(os.path.join(cwd, "copy.txt"))
     },
 
-    # --- БЛОК 3: Анализ и системная информация ---
     {
         "title": "Шаг 9: Подсчет слов",
         "desc": "Узнайте, сколько строк и слов в вашем файле.\nВведите: wc hello.txt",
@@ -64,7 +61,6 @@ LESSONS = [
         "check": lambda cwd, cmd: "uptime" in cmd
     },
 
-    # --- БЛОК 4: Очистка ---
     {
         "title": "Шаг 12: Удаление файлов",
         "desc": "Очистите папку: удалите note.txt, hello.txt и backup.txt.\nВведите: rm note.txt (и подтвердите), затем повторите для остальных файлов.",

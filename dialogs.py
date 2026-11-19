@@ -130,7 +130,6 @@ class LessonDialog(QDialog):
         self.setWindowTitle("TEiL — Обучающий курс")
         self.setMinimumWidth(450)
         self.setMinimumHeight(300)
-        # Важно: окно не должно блокировать главное окно
         self.setModal(False) 
         
         self.current_idx = start_idx
@@ -153,14 +152,13 @@ class LessonDialog(QDialog):
         self.status_lbl.setStyleSheet("color: #f9e2af; font-style: italic;")
         layout.addWidget(self.status_lbl)
         
-        # Кнопки: Сброс (слева) и Закрыть (справа)
         btns = QHBoxLayout()
         
         btn_reset = QPushButton("Сбросить прогресс")
         btn_reset.clicked.connect(self._reset_progress)
         btns.addWidget(btn_reset)
         
-        btns.addStretch() # Распирает кнопки по краям
+        btns.addStretch() 
         
         btn_close = QPushButton("Закрыть")
         btn_close.clicked.connect(self.accept)
@@ -286,9 +284,7 @@ class SettingsDialog(QDialog):
         dlg.exec()
 
     def _open_lessons(self):
-        # Сначала принудительно закрываем настройки, чтобы они не блокировали уроки
         self.accept()
-        # Затем вызываем открытие уроков в главном окне
         if self.parent() and hasattr(self.parent(), '_open_lessons'):
             self.parent()._open_lessons()
 
